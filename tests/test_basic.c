@@ -140,11 +140,11 @@ static void test_close_null_is_safe(void)
  * Tests: stub return codes
  * ---------------------------------------------------------------------- */
 
-static void test_push_stub_returns_error(void)
+static void test_push_null_db_returns_inval(void)
 {
-    test_begin("qdb_push stub returns error (unimplemented)");
+    test_begin("qdb_push(NULL, ...) returns QDB_ERR_INVAL");
     int rc = qdb_push(NULL, "q", "data", 4);
-    ASSERT_NE(rc, QDB_OK);
+    ASSERT_EQ(rc, QDB_ERR_INVAL);
     test_end();
 }
 
@@ -202,7 +202,7 @@ int main(void)
     test_errmsg_unknown();
     test_open_creates_database();
     test_close_null_is_safe();
-    test_push_stub_returns_error();
+    test_push_null_db_returns_inval();
     test_pop_stub_returns_empty();
     test_ack_stub_returns_noent();
     test_constants();

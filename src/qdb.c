@@ -347,14 +347,104 @@ void qdb_close(qdb_t *db)
 }
 
 /* -------------------------------------------------------------------------
- * Queue operation stubs
+ * qdb_push
  * ---------------------------------------------------------------------- */
 
 int qdb_push(qdb_t *db, const char *queue, const void *data, size_t len)
 {
-    (void)db; (void)queue; (void)data; (void)len;
-    return QDB_ERR_IO;
+    size_t             qlen;
+    uint8_t            name_len;
+    uint32_t           plen;
+    uint8_t           *buf;
+    uint64_t           msg_id;
+    uint64_t           rec_start;
+    uint64_t           new_end;
+    struct qdb__msg   *m;
+    struct qdb__queue *q;
+    int                rc;
+
+    /* --- input validation --- */
+    if (!db || !queue)                          { return QDB_ERR_INVAL; }
+    qlen = strlen(queue);
+    if (qlen == 0 || qlen > QDB_QUEUE_NAME_MAX) { return QDB_ERR_INVAL; }
+    if (len > 0 && !data)                       { return QDB_ERR_INVAL; }
+    if (len > QDB_MSG_MAX_LEN)                  { return QDB_ERR_INVAL; }
+
+    name_len = (uint8_t)qlen;
+
+    /* Safe: len <= QDB_MSG_MAX_LEN (64 MiB), qlen <= 255 */
+    plen = (uint32_t)QDB_PUSH_HDR_SIZE + (uint32_t)qlen + (uint32_t)len;
+
+    buf = (uint8_t *)malloc((size_t)plen);
+    if (!buf) { return QDB_ERR_NOMEM; }
+
+    msg_id = db->next_msg_id;
+
+    qdb__put_u64le(buf + QDB_PUSH_OFF_MSG_ID,    msg_id);
+    buf[QDB_PUSH_OFF_QNAME_LEN] = name_len;
+    memcpy(buf + QDB_PUSH_OFF_QNAME, queue, qlen);
+    if (len > 0) {
+        memcpy(buf + QDB_PUSH_OFF_QNAME + qlen, data, len);
+    }
+
+    /* --- durable append --- */
+    rec_start = db->log_end_offset;
+    new_end   = rec_start;
+
+    rc = qdb__append_record(db->fd, QDB_RT_MSG_PUSH, buf, plen, &new_end);
+    free(buf);
+
+    if (rc != QDB_OK) {
+        /* Disk write failed.  Nothing in memory has changed. */
+        return rc;
+    }
+
+    /* Record is on disk.  Persist the updated header fields before
+     * touching in-memory state. */
+    db->log_end_offset = new_end;
+    db->next_msg_id    = msg_id + 1u;
+
+    if (qdb__header_update(db->fd, db) != QDB_OK) {
+        /* Record is durable but header update failed; caller must
+         * close and reopen to get consistent state. */
+        return QDB_ERR_IO;
+    }
+
+    /* --- update in-memory state --- */
+    m = (struct qdb__msg *)calloc(1, sizeof(*m));
+    if (!m) {
+        /* OOM after a successful durable write.  The record is on disk and
+         * next_msg_id has been advanced.  The caller must close and reopen
+         * to restore consistent in-memory state. */
+        return QDB_ERR_NOMEM;
+    }
+
+    m->id               = msg_id;
+    m->data_file_offset = rec_start
+                        + (uint64_t)QDB_REC_HDR_SIZE
+                        + (uint64_t)QDB_PUSH_HDR_SIZE
+                        + (uint64_t)name_len;
+    m->data_len         = (uint32_t)len;
+    m->queue_name_len   = name_len;
+    memcpy(m->queue_name, queue, qlen);
+    m->queue_name[qlen] = '\0';
+    m->state            = QDB_MSG_STATE_PENDING;
+
+    (void)qdb__msg_insert(db->state, m);
+
+    q = qdb__queue_get_or_create(db->state, queue, name_len);
+    if (!q) {
+        /* OOM creating queue entry; same caveat as above. */
+        return QDB_ERR_NOMEM;
+    }
+
+    qdb__queue_pending_append(db->state, q, m);
+    return QDB_OK;
 }
+
+/* -------------------------------------------------------------------------
+ * Queue operation stubs
+ * ---------------------------------------------------------------------- */
 
 int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *msg)
 {

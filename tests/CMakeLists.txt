@@ -62,3 +62,28 @@ target_link_options(test_replay PRIVATE
 add_test(NAME replay COMMAND test_replay
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# qdb_push() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_push test_push.c)
+
+target_include_directories(test_push PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_push PRIVATE qdb::qdb)
+
+target_compile_options(test_push PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_push PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME push COMMAND test_push
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
