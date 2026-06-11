@@ -99,9 +99,38 @@ typedef intptr_t qdb__fd_t;
 /* Maximum sensible payload length (64 MiB + max fixed push overhead) */
 #define QDB_MAX_RECORD_PAYLOAD (QDB_MSG_MAX_LEN + 512u)
 
+/* RT_MSG_PUSH payload field offsets (variable length):
+ *   offset 0: u64  msg_id
+ *   offset 8: u8   queue_name_len  (1..QDB_QUEUE_NAME_MAX)
+ *   offset 9: u8[] queue_name
+ *   offset 9+queue_name_len: u8[]  message_data
+ */
+#define QDB_PUSH_OFF_MSG_ID    0u   /* u64 */
+#define QDB_PUSH_OFF_QNAME_LEN 8u   /* u8  */
+#define QDB_PUSH_OFF_QNAME     9u   /* u8[queue_name_len] */
+#define QDB_PUSH_HDR_SIZE      9u   /* msg_id(8) + name_len(1) */
+#define QDB_PUSH_MIN_PLEN     10u   /* msg_id + name_len=1 + 1-char name */
+
+/* RT_MSG_LEASE payload field offsets (QDB_PAYLOAD_LEASE_SIZE = 24 bytes) */
+#define QDB_LEASE_OFF_MSG_ID    0u   /* u64 */
+#define QDB_LEASE_OFF_EXPIRY    8u   /* u64 microseconds since epoch */
+#define QDB_LEASE_OFF_LEASE_ID 16u   /* u64 */
+
+/* RT_MSG_ACK / RT_MSG_NACK / RT_MSG_EXPIRE payload field offsets
+ * (QDB_PAYLOAD_ACK_SIZE = 16 bytes) */
+#define QDB_ACK_OFF_MSG_ID   0u     /* u64 */
+#define QDB_ACK_OFF_LEASE_ID 8u     /* u64 */
+
+/* RT_CHECKPOINT payload field offsets (QDB_PAYLOAD_CHECKPOINT_SIZE = 24 bytes) */
+#define QDB_CKPT_OFF_TIME_US        0u  /* u64 */
+#define QDB_CKPT_OFF_NEXT_MSG_ID    8u  /* u64 */
+#define QDB_CKPT_OFF_NEXT_LEASE_ID 16u  /* u64 */
+
 /* -------------------------------------------------------------------------
  * Internal database handle
  * ---------------------------------------------------------------------- */
+
+struct qdb__state;  /* defined in qdb_state.h */
 
 struct qdb {
     qdb__fd_t   fd;           /* main file                   */
@@ -118,6 +147,9 @@ struct qdb {
     uint64_t    log_end_offset;
     uint64_t    create_time_us;
     uint32_t    flags;
+
+    /* In-memory queue state; NULL until qdb__replay_log() completes */
+    struct qdb__state *state;
 };
 
 /* -------------------------------------------------------------------------
@@ -285,10 +317,24 @@ int qdb__header_write(qdb__fd_t fd, const struct qdb *db);
 int qdb__header_read(qdb__fd_t fd, struct qdb *db);
 
 /*
- * Write only the three fields that change at runtime — log_end_offset,
- * flags, and the recomputed header_crc32 — then sync.
- * The other fields are read from db (all mirrored there).
+ * Write the mutable header fields (next_msg_id, log_start, log_end, flags,
+ * crc32 — bytes 24..55) then sync.  Cheaper than a full 4096-byte write.
+ * All other fields are read from db (mirrored there).
  */
 int qdb__header_update(qdb__fd_t fd, const struct qdb *db);
+
+/* -------------------------------------------------------------------------
+ * Log replay  (qdb_replay.c)
+ * ---------------------------------------------------------------------- */
+
+/*
+ * Scan every committed record in db's log, reconstruct in-memory queue
+ * state, and store the result in db->state.  Updates db->next_msg_id and
+ * db->next_lease_id from the record stream.
+ *
+ * Returns QDB_OK, QDB_ERR_CORRUPT, QDB_ERR_IO, or QDB_ERR_NOMEM.
+ * On error db->state is left NULL (caller should treat db as unusable).
+ */
+int qdb__replay_log(qdb_t *db);
 
 #endif /* QDB_INTERNAL_H */

@@ -84,6 +84,8 @@ add_library(qdb STATIC
     src/qdb_crc32.c
     src/qdb_io.c
     src/qdb_platform.c
+    src/qdb_state.c
+    src/qdb_replay.c
 )
 
 add_library(qdb::qdb ALIAS qdb)

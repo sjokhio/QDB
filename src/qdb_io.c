@@ -145,11 +145,14 @@ int qdb__header_read(qdb__fd_t fd, struct qdb *db)
 
 int qdb__header_update(qdb__fd_t fd, const struct qdb *db)
 {
-    /* Build the 56-byte prefix in a stack buffer, compute CRC, then
-     * write only bytes [40..55] (log_end + flags + crc32). */
+    /* Build the 56-byte prefix in a stack buffer, recompute CRC, then
+     * write bytes [24..55]: next_msg_id, log_start, log_end, flags, crc32.
+     * This covers every field that changes at runtime without a full 4096-byte
+     * write. */
     uint8_t  prefix[QDB_HDR_CRC_COVER + 4u]; /* bytes 0..55 */
     uint32_t crc;
-    uint8_t  patch[16]; /* log_end(8) + flags(4) + crc(4) */
+    /* patch covers bytes 24..55 = 32 bytes */
+    uint8_t  patch[32]; /* next_msg_id(8)+log_start(8)+log_end(8)+flags(4)+crc(4) */
 
     memcpy(prefix + QDB_HDR_OFF_MAGIC,       k_file_magic, 8);
     qdb__put_u32le(prefix + QDB_HDR_OFF_VERSION,      QDB_FORMAT_VERSION);
@@ -162,12 +165,14 @@ int qdb__header_update(qdb__fd_t fd, const struct qdb *db)
 
     crc = qdb__crc32(prefix, QDB_HDR_CRC_COVER);
 
-    /* patch = bytes [40..55]: log_end(8), flags(4), crc32(4) */
-    qdb__put_u64le(patch + 0, db->log_end_offset);
-    qdb__put_u32le(patch + 8, db->flags);
-    qdb__put_u32le(patch + 12, crc);
+    /* patch = bytes [24..55] */
+    qdb__put_u64le(patch +  0, db->next_msg_id);
+    qdb__put_u64le(patch +  8, db->log_start_offset);
+    qdb__put_u64le(patch + 16, db->log_end_offset);
+    qdb__put_u32le(patch + 24, db->flags);
+    qdb__put_u32le(patch + 28, crc);
 
-    if (qdb__write_full(fd, patch, sizeof(patch), QDB_HDR_OFF_LOG_END) != QDB_OK) {
+    if (qdb__write_full(fd, patch, sizeof(patch), QDB_HDR_OFF_NEXT_MSG_ID) != QDB_OK) {
         return QDB_ERR_IO;
     }
     return qdb__file_sync(fd);

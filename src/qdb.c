@@ -7,7 +7,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include "qdb_internal.h"
+#include "qdb_state.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +27,8 @@ static void qdb__free_db(qdb_t *db)
     if (!db) {
         return;
     }
+    qdb__state_free(db->state);
+    db->state = NULL;
     if (db->fd != QDB__INVALID_FD) {
         qdb__file_close(db->fd);
     }
@@ -255,7 +257,7 @@ qdb_t *qdb_open(const char *path)
     }
 
     if (is_new) {
-        /* Fresh database: write initial header. */
+        /* Fresh database: write initial header and initialise empty state. */
         db->next_msg_id      = 1u;
         db->next_lease_id    = 1u;
         db->log_start_offset = QDB_HDR_SIZE;
@@ -264,6 +266,12 @@ qdb_t *qdb_open(const char *path)
         db->flags            = QDB_FLAG_DIRTY;
 
         if (qdb__header_write(db->fd, db) != QDB_OK) {
+            qdb__free_db(db);
+            return NULL;
+        }
+
+        db->state = qdb__state_alloc();
+        if (!db->state) {
             qdb__free_db(db);
             return NULL;
         }
@@ -306,7 +314,13 @@ qdb_t *qdb_open(const char *path)
         return NULL;
     }
 
-    /* 7. Set dirty flag. */
+    /* 7. Replay log to reconstruct in-memory queue state. */
+    if (qdb__replay_log(db) != QDB_OK) {
+        qdb__free_db(db);
+        return NULL;
+    }
+
+    /* 8. Set dirty flag and persist (including updated next_msg_id). */
     db->flags |= QDB_FLAG_DIRTY;
     if (qdb__header_update(db->fd, db) != QDB_OK) {
         qdb__free_db(db);
