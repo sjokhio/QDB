@@ -99,6 +99,9 @@ typedef intptr_t qdb__fd_t;
 /* Maximum sensible payload length (64 MiB + max fixed push overhead) */
 #define QDB_MAX_RECORD_PAYLOAD (QDB_MSG_MAX_LEN + 512u)
 
+/* Default lease duration: 30 seconds in microseconds */
+#define QDB_DEFAULT_LEASE_US  UINT64_C(30000000)
+
 /* RT_MSG_PUSH payload field offsets (variable length):
  *   offset 0: u64  msg_id
  *   offset 8: u8   queue_name_len  (1..QDB_QUEUE_NAME_MAX)

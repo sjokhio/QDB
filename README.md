@@ -110,14 +110,17 @@ qdb_t *db = qdb_open("myapp.qdb");
 /* Push a message onto a named queue. */
 qdb_push(db, "jobs", "hello world", 11);
 
-/* Pop the next unacknowledged message from a queue. */
-qdb_msg_t msg;
-qdb_pop(db, "jobs", &msg);
+/* Pop the next available message from a queue. */
+qdb_msg_t msg = {0};
+if (qdb_pop(db, "jobs", &msg) == QDB_OK) {
+    /* Process msg.data (msg.len bytes) ... */
 
-/* Process msg.data ... */
+    /* Acknowledge delivery to remove the message permanently. */
+    qdb_ack(db, msg.id);
 
-/* Acknowledge delivery to remove the message permanently. */
-qdb_ack(db, msg.id);
+    /* Release the heap-allocated queue name and data copy. */
+    qdb_msg_free(&msg);
+}
 
 qdb_close(db);
 ```

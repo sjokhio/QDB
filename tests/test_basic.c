@@ -148,12 +148,13 @@ static void test_push_null_db_returns_inval(void)
     test_end();
 }
 
-static void test_pop_stub_returns_empty(void)
+static void test_pop_null_db_returns_inval(void)
 {
-    test_begin("qdb_pop stub returns QDB_ERR_EMPTY (unimplemented)");
-    qdb_msg_t msg = {0};
+    test_begin("qdb_pop(NULL, ...) returns QDB_ERR_INVAL");
+    qdb_msg_t msg = {0, 0, NULL, NULL, 0};
     int rc = qdb_pop(NULL, "q", &msg);
-    ASSERT_EQ(rc, QDB_ERR_EMPTY);
+    ASSERT_EQ(rc, QDB_ERR_INVAL);
+    qdb_msg_free(&msg);
     test_end();
 }
 
@@ -203,7 +204,7 @@ int main(void)
     test_open_creates_database();
     test_close_null_is_safe();
     test_push_null_db_returns_inval();
-    test_pop_stub_returns_empty();
+    test_pop_null_db_returns_inval();
     test_ack_stub_returns_noent();
     test_constants();
     test_version_number();

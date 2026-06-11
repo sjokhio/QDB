@@ -18,20 +18,22 @@ int main(void)
     printf("QDB version %s\n", qdb_version());
 
     /*
-     * TODO: replace with real usage once qdb_open is implemented:
+     * TODO: replace with real usage once qdb_pop is implemented:
      *
      *   qdb_t *db = qdb_open("hello.qdb");
      *   qdb_push(db, "greetings", "hello", 5);
      *
-     *   qdb_msg_t msg;
-     *   qdb_pop(db, "greetings", &msg);
-     *   printf("got: %.*s\n", (int)msg.len, (const char *)msg.data);
-     *   qdb_ack(db, msg.id);
+     *   qdb_msg_t msg = {0};
+     *   if (qdb_pop(db, "greetings", &msg) == QDB_OK) {
+     *       printf("got: %.*s\n", (int)msg.len, (const char *)msg.data);
+     *       qdb_ack(db, msg.id);
+     *       qdb_msg_free(&msg);
+     *   }
      *
      *   qdb_close(db);
      */
 
-    printf("Storage engine not yet implemented.\n");
+    printf("qdb_pop not yet implemented.\n");
     printf("Error codes:\n");
 
     int codes[] = {

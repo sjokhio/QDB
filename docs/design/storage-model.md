@@ -214,11 +214,11 @@ Expired messages go to the **front** of the ready queue, not the back.  Rational
 
 ### 4.1 `qdb_pop()` — reading message payload
 
-The message payload is stored in the `data` field of an `RT_MSG_PUSH` record, at a known log offset (`ref.log_offset`).  The read is a single `pread()` from the correct offset.
+The message payload is stored in the `data` field of an `RT_MSG_PUSH` record at a known log offset (`m->data_file_offset`).  The read is a single `pread()` from that offset.
 
-QDB maintains a single read buffer (`db->read_buf`) that is reused across calls.  The buffer is grown as needed (reallocated if `ref.data_len > current_buf_size`).  This buffer is the "current message" buffer referenced by `msg->data`.
+`qdb_pop()` allocates a fresh heap buffer for `out_msg->data` and copies the bytes into it.  It similarly heap-allocates `out_msg->queue`.  Both are owned by the caller and must be released with `qdb_msg_free()`.
 
-**Implication:** `msg->data` is invalidated by the next call to `qdb_pop()` on the same handle.  Callers that need the data to outlive the next pop must copy it.  This constraint is documented in `qdb.h`.
+**Ownership:** `out_msg->data` and `out_msg->queue` survive any subsequent call on the same handle.  The caller decides when to free them.  A zero-initialised `qdb_msg_t` is always safe to pass to `qdb_msg_free()`.
 
 ---
 

@@ -82,24 +82,29 @@ typedef struct qdb qdb_t;
 
 /* -------------------------------------------------------------------------
  * Message descriptor
- *
- * Returned by qdb_pop.  The caller must NOT free msg.data; the buffer is
- * owned by the qdb_t handle and is valid until the next call that takes
- * the same handle.
  * ---------------------------------------------------------------------- */
 
 /**
  * Descriptor for a message returned by qdb_pop().
  *
- * @id    Opaque message identifier, required by qdb_ack().
- * @data  Pointer to the raw message payload.  Valid until the next call
- *        on this handle.  Do not free.
- * @len   Length of @data in bytes.
+ * All pointer fields are heap-allocated.  The caller owns the struct
+ * after a successful qdb_pop() and must release it with qdb_msg_free().
+ * Zero-initialising a qdb_msg_t (= {0} or memset to 0) is always safe.
+ *
+ * @id        Opaque monotonic message identifier.  Pass to qdb_ack().
+ * @lease_id  Identifier of the lease granted by qdb_pop().  Exposed for
+ *            diagnostics and future lease-aware qdb_ack() variants.
+ * @queue     Heap-allocated, null-terminated name of the source queue.
+ * @data      Heap-allocated copy of the raw message payload.
+ *            NULL when @len is zero.
+ * @len       Length of @data in bytes.
  */
 typedef struct {
-    uint64_t    id;
-    const void *data;
-    size_t      len;
+    uint64_t  id;
+    uint64_t  lease_id;
+    char     *queue;
+    void     *data;
+    size_t    len;
 } qdb_msg_t;
 
 /* -------------------------------------------------------------------------
@@ -156,8 +161,8 @@ void qdb_close(qdb_t *db);
  * @db     Open database handle.  Must not be NULL.
  * @queue  Name of the target queue.  Must be a non-empty, null-terminated
  *         string no longer than QDB_QUEUE_NAME_MAX bytes.
- * @data   Payload to enqueue.  Must not be NULL.
- * @len    Length of @data in bytes.  Must be greater than zero.
+ * @data   Payload to enqueue.  May be NULL only when @len is zero.
+ * @len    Length of @data in bytes.  Pass zero for an empty message.
  *
  * @return  QDB_OK on success.
  *          QDB_ERR_INVAL if any argument is invalid.
@@ -167,43 +172,60 @@ void qdb_close(qdb_t *db);
 int qdb_push(qdb_t *db, const char *queue, const void *data, size_t len);
 
 /**
- * qdb_pop — dequeue the next unacknowledged message.
+ * qdb_msg_free — release the resources owned by a qdb_msg_t.
  *
- * Removes the oldest unacknowledged message from @queue and writes its
- * descriptor into *@msg.  The message transitions to a "pending
- * acknowledgement" state; it will not be returned by subsequent
- * qdb_pop() calls but it is not yet deleted from durable storage.
+ * Frees the heap-allocated @queue and @data fields and zeroes the struct
+ * so it is safe to call qdb_msg_free() on the same pointer again
+ * (idempotent).  It is safe to pass a pointer to a zero-initialised
+ * qdb_msg_t.
  *
- * Call qdb_ack() with msg.id to commit the deletion.  Messages that are
- * never acknowledged (e.g. because the process crashed) will be
- * redelivered after recovery, providing at-least-once semantics.
- *
- * @db     Open database handle.  Must not be NULL.
- * @queue  Name of the source queue.  Must not be NULL or empty.
- * @msg    Output parameter.  Populated on success.  Must not be NULL.
- *
- * @return  QDB_OK    on success; *@msg is populated.
- *          QDB_ERR_EMPTY  if @queue has no unacknowledged messages.
- *          QDB_ERR_INVAL  if any argument is invalid.
- *          QDB_ERR_IO     on a read failure.
+ * @msg  Pointer to the descriptor to release.  Must not be NULL.
  */
-int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *msg);
+void qdb_msg_free(qdb_msg_t *msg);
 
 /**
- * qdb_ack — acknowledge and permanently delete a message.
+ * qdb_pop — dequeue the next available message from a queue.
+ *
+ * Takes the oldest PENDING message from @queue, grants it a time-bounded
+ * lease, and writes the result into *@out_msg.  The message transitions to
+ * LEASED state and will not be returned by subsequent qdb_pop() calls
+ * until the lease expires or is resolved.
+ *
+ * On success *@out_msg is populated with heap-allocated copies of the
+ * queue name and message payload.  The caller must release these with
+ * qdb_msg_free() when done.
+ *
+ * Call qdb_ack() with out_msg->id to permanently remove the message.
+ * Messages whose leases expire without an acknowledgement are automatically
+ * redelivered on the next qdb_pop(), providing at-least-once semantics.
+ *
+ * @db       Open database handle.  Must not be NULL.
+ * @queue    Name of the source queue.  Must not be NULL or empty.
+ * @out_msg  Output parameter.  Populated on success.  Must not be NULL.
+ *           The caller owns the contents after a QDB_OK return.
+ *
+ * @return  QDB_OK         on success; *@out_msg is populated.
+ *          QDB_ERR_EMPTY  if @queue has no available messages.
+ *          QDB_ERR_INVAL  if any argument is invalid.
+ *          QDB_ERR_IO     on a read or write failure.
+ *          QDB_ERR_NOMEM  if a heap allocation fails.
+ */
+int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg);
+
+/**
+ * qdb_ack — acknowledge and permanently delete a leased message.
  *
  * Marks the message identified by @msg_id as permanently consumed.  The
  * message is removed from the database and will not be redelivered.
  *
  * @msg_id must be the id field from a qdb_msg_t previously returned by
- * qdb_pop() on the same handle, and must not have been acknowledged
- * already.
+ * qdb_pop() on the same handle, and the lease must still be active.
  *
  * @db      Open database handle.  Must not be NULL.
  * @msg_id  Message identifier from qdb_msg_t.id.
  *
  * @return  QDB_OK        on success.
- *          QDB_ERR_NOENT if @msg_id does not match any pending message.
+ *          QDB_ERR_NOENT if @msg_id does not match any leased message.
  *          QDB_ERR_IO    on a flush failure.
  */
 int qdb_ack(qdb_t *db, uint64_t msg_id);

@@ -443,13 +443,128 @@ int qdb_push(qdb_t *db, const char *queue, const void *data, size_t len)
 }
 
 /* -------------------------------------------------------------------------
+ * qdb_msg_free
+ * ---------------------------------------------------------------------- */
+
+void qdb_msg_free(qdb_msg_t *msg)
+{
+    if (!msg) {
+        return;
+    }
+    free(msg->queue);
+    free(msg->data);
+    msg->id       = 0;
+    msg->lease_id = 0;
+    msg->queue    = NULL;
+    msg->data     = NULL;
+    msg->len      = 0;
+}
+
+/* -------------------------------------------------------------------------
  * Queue operation stubs
  * ---------------------------------------------------------------------- */
 
-int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *msg)
+int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
 {
-    (void)db; (void)queue; (void)msg;
-    return QDB_ERR_EMPTY;
+    size_t              qlen;
+    uint8_t             name_len;
+    struct qdb__queue  *q;
+    struct qdb__msg    *m;
+    uint64_t            lease_id;
+    uint64_t            expiry_us;
+    uint8_t             lease_buf[QDB_PAYLOAD_LEASE_SIZE];
+    uint64_t            new_end;
+    struct qdb__lease  *l;
+    char               *q_copy;
+    void               *d_copy;
+    int                 rc;
+
+    /* --- input validation --- */
+    if (!db || !queue || !out_msg) { return QDB_ERR_INVAL; }
+    qlen = strlen(queue);
+    if (qlen == 0 || qlen > QDB_QUEUE_NAME_MAX) { return QDB_ERR_INVAL; }
+    name_len = (uint8_t)qlen;
+
+    /* --- find queue and head message --- */
+    q = qdb__queue_get(db->state, queue, name_len);
+    if (!q || q->pending_count == 0 || q->pending_head == 0) {
+        return QDB_ERR_EMPTY;
+    }
+    m = qdb__msg_get(db->state, q->pending_head);
+    if (!m) { return QDB_ERR_CORRUPT; }
+
+    /* --- pre-allocate return buffers and read data before touching disk --- */
+    q_copy = (char *)malloc(qlen + 1u);
+    if (!q_copy) { return QDB_ERR_NOMEM; }
+    memcpy(q_copy, queue, qlen + 1u);
+
+    d_copy = NULL;
+    if (m->data_len > 0) {
+        d_copy = malloc((size_t)m->data_len);
+        if (!d_copy) {
+            free(q_copy);
+            return QDB_ERR_NOMEM;
+        }
+        rc = qdb__read_full(db->fd, d_copy, (size_t)m->data_len,
+                            m->data_file_offset);
+        if (rc != QDB_OK) {
+            free(d_copy);
+            free(q_copy);
+            return rc;
+        }
+    }
+
+    /* --- assign lease and build payload --- */
+    lease_id  = db->next_lease_id;
+    expiry_us = qdb__time_us() + QDB_DEFAULT_LEASE_US;
+
+    qdb__put_u64le(lease_buf + QDB_LEASE_OFF_MSG_ID,   m->id);
+    qdb__put_u64le(lease_buf + QDB_LEASE_OFF_EXPIRY,   expiry_us);
+    qdb__put_u64le(lease_buf + QDB_LEASE_OFF_LEASE_ID, lease_id);
+
+    /* --- durable append --- */
+    new_end = db->log_end_offset;
+    rc = qdb__append_record(db->fd, QDB_RT_MSG_LEASE,
+                            lease_buf, QDB_PAYLOAD_LEASE_SIZE, &new_end);
+    if (rc != QDB_OK) {
+        free(d_copy);
+        free(q_copy);
+        return rc;
+    }
+
+    /* --- persist header (log_end_offset) --- */
+    db->log_end_offset = new_end;
+    db->next_lease_id  = lease_id + 1u;
+    if (qdb__header_update(db->fd, db) != QDB_OK) {
+        /* Record is durable but header update failed. */
+        free(d_copy);
+        free(q_copy);
+        return QDB_ERR_IO;
+    }
+
+    /* --- update in-memory state --- */
+    qdb__queue_pending_remove(db->state, q, m);
+    m->state           = QDB_MSG_STATE_LEASED;
+    m->lease_id        = lease_id;
+    m->lease_expiry_us = expiry_us;
+    q->leased_count++;
+
+    l = (struct qdb__lease *)calloc(1, sizeof(*l));
+    if (l) {
+        l->lease_id  = lease_id;
+        l->msg_id    = m->id;
+        l->expiry_us = expiry_us;
+        (void)qdb__lease_insert(db->state, l);
+    }
+
+    /* --- populate caller-owned output --- */
+    out_msg->id       = m->id;
+    out_msg->lease_id = lease_id;
+    out_msg->queue    = q_copy;
+    out_msg->data     = d_copy;
+    out_msg->len      = (size_t)m->data_len;
+
+    return QDB_OK;
 }
 
 int qdb_ack(qdb_t *db, uint64_t msg_id)

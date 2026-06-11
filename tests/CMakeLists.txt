@@ -87,3 +87,28 @@ target_link_options(test_push PRIVATE
 add_test(NAME push COMMAND test_push
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# qdb_pop() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_pop test_pop.c)
+
+target_include_directories(test_pop PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_pop PRIVATE qdb::qdb)
+
+target_compile_options(test_pop PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_pop PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME pop COMMAND test_pop
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
