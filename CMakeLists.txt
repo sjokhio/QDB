@@ -53,7 +53,11 @@ else()
     if(MSVC)
         # already handled above
     elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
-        list(APPEND QDB_WARNING_FLAGS -Weverything -Wno-declaration-after-statement)
+        list(APPEND QDB_WARNING_FLAGS
+            -Wstrict-prototypes
+            -Wmissing-prototypes
+            -Wmissing-declarations
+        )
     endif()
 endif()
 
@@ -77,6 +81,9 @@ endif()
 
 add_library(qdb STATIC
     src/qdb.c
+    src/qdb_crc32.c
+    src/qdb_io.c
+    src/qdb_platform.c
 )
 
 add_library(qdb::qdb ALIAS qdb)

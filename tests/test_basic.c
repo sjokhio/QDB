@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* -------------------------------------------------------------------------
  * Minimal test harness
@@ -105,19 +106,25 @@ static void test_errmsg_unknown(void)
 }
 
 /* -------------------------------------------------------------------------
- * Tests: qdb_open stub behaviour
- *
- * The stub implementation returns NULL unconditionally.  These tests
- * verify that the stub does not crash and that its return value is
- * handled gracefully.  They will be replaced with real integration tests
- * once the storage engine is implemented.
+ * Tests: qdb_open basic behaviour
  * ---------------------------------------------------------------------- */
 
-static void test_open_stub_returns_null(void)
+static void test_open_creates_database(void)
 {
-    test_begin("qdb_open stub returns NULL (unimplemented)");
-    qdb_t *db = qdb_open("test.qdb");
-    ASSERT_NULL(db);
+    const char *path = "basic_test_open.qdb";
+    test_begin("qdb_open creates a new database successfully");
+    /* Clean up any leftover from a previous run. */
+    (void)unlink(path);
+    (void)unlink("basic_test_open.qdb-wal");
+    (void)unlink("basic_test_open.qdb-lock");
+
+    qdb_t *db = qdb_open(path);
+    ASSERT(db != NULL);
+    qdb_close(db);
+
+    (void)unlink(path);
+    (void)unlink("basic_test_open.qdb-wal");
+    (void)unlink("basic_test_open.qdb-lock");
     test_end();
 }
 
@@ -193,7 +200,7 @@ int main(void)
     test_errmsg_ok();
     test_errmsg_all_codes();
     test_errmsg_unknown();
-    test_open_stub_returns_null();
+    test_open_creates_database();
     test_close_null_is_safe();
     test_push_stub_returns_error();
     test_pop_stub_returns_empty();
