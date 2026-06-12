@@ -27,8 +27,18 @@ Just link a library and start queuing jobs.
 
 ---
 
+## Architecture
+
+QDB uses a durable append-only log stored in a single queue file. On startup,
+the log is replayed to rebuild queue state and recover from crashes.
+
+See [Architecture](docs/architecture.md).
+
+---
+
 ## Contents
 
+- [Architecture](#architecture)
 - [30-second quickstart](#30-second-quickstart)
 - [Why QDB?](#why-qdb)
 - [When to use QDB](#when-to-use-qdb)
@@ -37,7 +47,7 @@ Just link a library and start queuing jobs.
 - [Building](#building)
 - [API overview](#api-overview)
 - [Design philosophy](#design-philosophy)
-- [Roadmap](#roadmap)
+- [Status and roadmap](#status-and-roadmap)
 - [Contributing](#contributing)
 
 ---
@@ -150,8 +160,8 @@ across all message counts tested (N = 100 to 1 000).
 > Full methodology, platform comparison table, and per-fsync latency
 > derivation: [`docs/benchmarks.md`](docs/benchmarks.md)
 
-The primary throughput lever, group commit / batch fsync, is planned for
-v0.2.0 and is expected to raise throughput by 10-100x.
+The primary future throughput lever is group commit / batch fsync, which can
+reduce the number of storage flushes required per operation.
 
 ---
 
@@ -279,38 +289,25 @@ platform shims with no `#ifdef` spaghetti in the core logic.
 
 ---
 
-## Roadmap
+## Status and roadmap
 
-### v0.1.0: Foundation *(current)*
+**Current release:** v0.1.0
 
-- [x] Append-only storage engine with CRC-32 corruption detection
-- [x] Named queues: `push` / `pop` / `ack` / `nack`
-- [x] At-least-once delivery with time-bounded leases
-- [x] Lease expiry via `qdb_process_expired_leases`
-- [x] Crash recovery: full state rebuilt from log on reopen
-- [x] Fuzz harnesses (libFuzzer + AFL++ via `fuzz/`)
-- [x] 1 286+ assertions across 8 test suites
+**Planned next release:** v0.2.0
 
-### v0.2.0: Compaction
+Planned v0.2.0 focus:
 
-- [ ] Log compaction to reclaim disk space after ACKs
-- [ ] `qdb_checkpoint()` explicit compaction API
-- [ ] Config API: custom lease duration, retry limits
-- [ ] Group commit / batch fsync for 10-100x throughput improvement
+- Multi-process stress testing
+- `qdb_compact()`
+- Configurable lease timeout API
+- Queue statistics API
 
-### v0.3.0: Observability
+Non-goals:
 
-- [ ] `qdb_queue_depth()`: pending / leased / acked counts
-- [ ] `qdb_peek()`: non-consuming read
-- [ ] `qdb_inspect` CLI tool
-- [ ] Dead-letter queue after configurable retry limit
-
-### v1.0.0: Stable
-
-- [ ] Stable on-disk format guarantee
-- [ ] Language bindings (Go, Rust, Python)
-- [ ] Full Windows CI
-- [ ] Security audit
+- Networking
+- Clustering
+- Replication
+- Broker/server mode
 
 ---
 
