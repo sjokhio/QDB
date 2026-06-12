@@ -187,3 +187,28 @@ target_link_options(test_expire PRIVATE
 add_test(NAME expire COMMAND test_expire
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# qdb_stats() / qdb_queue_stats() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_stats test_stats.c)
+
+target_include_directories(test_stats PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_stats PRIVATE qdb::qdb)
+
+target_compile_options(test_stats PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_stats PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME stats COMMAND test_stats
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)

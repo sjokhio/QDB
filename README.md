@@ -295,12 +295,15 @@ and Win32 file APIs, with no `#ifdef` spaghetti in the core logic.
 
 **Planned next release:** v0.2.0
 
+Implemented after v0.1.0:
+
+- Queue statistics API
+
 Planned v0.2.0 focus:
 
 - Multi-process stress testing
 - `qdb_compact()`
 - Configurable lease timeout API
-- Queue statistics API
 
 Non-goals:
 

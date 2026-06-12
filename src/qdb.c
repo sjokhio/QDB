@@ -740,6 +740,56 @@ int qdb_process_expired_leases(qdb_t *db)
 }
 
 /* -------------------------------------------------------------------------
+ * qdb_stats / qdb_queue_stats
+ * ---------------------------------------------------------------------- */
+
+int qdb_stats(qdb_t *db, qdb_stats_t *out)
+{
+    struct qdb__state *st;
+    uint32_t           b;
+
+    if (!db || !out) { return QDB_ERR_INVAL; }
+
+    memset(out, 0, sizeof(*out));
+    st = db->state;
+    out->queue_count = st->queue_count;
+
+    for (b = 0; b < QDB__QUEUE_BUCKETS; b++) {
+        const struct qdb__queue *q = st->queue_buckets[b];
+        while (q) {
+            out->pending_count += q->pending_count;
+            out->leased_count  += q->leased_count;
+            out->acked_count   += q->acked_count;
+            q = q->next_in_bucket;
+        }
+    }
+
+    (void)qdb__file_size(db->fd, &out->file_size_bytes);
+
+    return QDB_OK;
+}
+
+int qdb_queue_stats(qdb_t *db, const char *queue, qdb_queue_stats_t *out)
+{
+    const struct qdb__queue *q;
+    size_t                   qlen;
+
+    if (!db || !queue || !out) { return QDB_ERR_INVAL; }
+    qlen = strlen(queue);
+    if (qlen == 0 || qlen > QDB_QUEUE_NAME_MAX) { return QDB_ERR_INVAL; }
+
+    q = qdb__queue_get(db->state, queue, (uint8_t)qlen);
+    if (!q) { return QDB_ERR_NOENT; }
+
+    memset(out, 0, sizeof(*out));
+    out->pending_count = q->pending_count;
+    out->leased_count  = q->leased_count;
+    out->acked_count   = q->acked_count;
+
+    return QDB_OK;
+}
+
+/* -------------------------------------------------------------------------
  * Utilities
  * ---------------------------------------------------------------------- */
 

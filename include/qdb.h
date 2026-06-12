@@ -287,6 +287,79 @@ int qdb_nack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
 int qdb_process_expired_leases(qdb_t *db);
 
 /* -------------------------------------------------------------------------
+ * Statistics
+ * ---------------------------------------------------------------------- */
+
+/**
+ * qdb_stats_t — database-level statistics snapshot.
+ *
+ * All count fields reflect the current in-memory state and are computed
+ * without disk I/O.  @file_size_bytes is the only field that queries the
+ * OS (one seek/stat call); it is zero if that query fails.
+ *
+ * @queue_count      Number of distinct named queues ever created in this
+ *                   session.  Includes queues whose messages have all been
+ *                   acknowledged; queue entries are retained for the
+ *                   lifetime of the db handle.
+ * @pending_count    Messages ready to be popped across all queues.
+ * @leased_count     Messages currently held by an active lease (all queues).
+ *                   Non-zero after a crash/reopen if leases were active at
+ *                   close; call qdb_process_expired_leases() to resolve them.
+ * @acked_count      Messages permanently consumed; retained for ID
+ *                   deduplication until reclaimed by qdb_compact().
+ * @file_size_bytes  Current size of the database file on disk, in bytes.
+ *                   Zero if the OS size query fails.
+ */
+typedef struct {
+    uint64_t queue_count;
+    uint64_t pending_count;
+    uint64_t leased_count;
+    uint64_t acked_count;
+    uint64_t file_size_bytes;
+} qdb_stats_t;
+
+/**
+ * qdb_queue_stats_t — per-queue statistics snapshot.
+ *
+ * @pending_count  Messages ready to be popped from this queue.
+ * @leased_count   Messages currently held by an active lease.
+ * @acked_count    Messages permanently consumed from this queue.
+ */
+typedef struct {
+    uint32_t pending_count;
+    uint32_t leased_count;
+    uint32_t acked_count;
+} qdb_queue_stats_t;
+
+/**
+ * qdb_stats — fill a database-level statistics snapshot.
+ *
+ * Aggregates counts across all queues.  Does not write to disk.  Performs
+ * one OS call to obtain @file_size_bytes; all other fields are in-memory.
+ *
+ * @db   Open database handle.  Must not be NULL.
+ * @out  Output parameter to fill.  Must not be NULL.
+ *
+ * @return  QDB_OK        on success; *@out is populated.
+ *          QDB_ERR_INVAL if @db or @out is NULL.
+ */
+int qdb_stats(qdb_t *db, qdb_stats_t *out);
+
+/**
+ * qdb_queue_stats — fill statistics for a single named queue.
+ *
+ * @db     Open database handle.  Must not be NULL.
+ * @queue  Name of the queue to inspect.  Must be non-NULL and non-empty.
+ * @out    Output parameter to fill.  Must not be NULL.
+ *
+ * @return  QDB_OK         on success; *@out is populated.
+ *          QDB_ERR_INVAL  if @db, @queue, or @out is NULL, or @queue is
+ *                         empty or longer than QDB_QUEUE_NAME_MAX.
+ *          QDB_ERR_NOENT  if no queue with that name exists in @db.
+ */
+int qdb_queue_stats(qdb_t *db, const char *queue, qdb_queue_stats_t *out);
+
+/* -------------------------------------------------------------------------
  * Limits
  * ---------------------------------------------------------------------- */
 
