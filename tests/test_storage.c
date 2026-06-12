@@ -468,7 +468,6 @@ static void test_close_null_safe(void)
 {
     test_begin("qdb_close(NULL) is a safe no-op");
     qdb_close(NULL);
-    ASSERT(1);
     test_end();
 }
 

@@ -132,7 +132,6 @@ static void test_close_null_is_safe(void)
 {
     test_begin("qdb_close(NULL) does not crash");
     qdb_close(NULL);  /* must be a no-op */
-    ASSERT(1);        /* reaching here means no crash */
     test_end();
 }
 
@@ -188,9 +187,12 @@ static void test_expire_null_db_returns_inval(void)
 
 static void test_constants(void)
 {
+    volatile size_t queue_name_max = QDB_QUEUE_NAME_MAX;
+    volatile size_t msg_max_len = QDB_MSG_MAX_LEN;
+
     test_begin("QDB_QUEUE_NAME_MAX and QDB_MSG_MAX_LEN are positive");
-    ASSERT(QDB_QUEUE_NAME_MAX > 0);
-    ASSERT(QDB_MSG_MAX_LEN > 0);
+    ASSERT(queue_name_max > 0);
+    ASSERT(msg_max_len > 0);
     test_end();
 }
 
