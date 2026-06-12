@@ -229,25 +229,6 @@ uint64_t qdb__time_us(void)
 #define FD2H(fd)  ((HANDLE)(fd))
 #define H2FD(h)   ((qdb__fd_t)(intptr_t)(h))
 
-static int qdb__win_open(const char *path, DWORD access, DWORD disposition,
-                         qdb__fd_t *out_fd)
-{
-    HANDLE h = CreateFileA(
-        path,
-        access,
-        0,                     /* no sharing */
-        NULL,
-        disposition,
-        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
-        NULL
-    );
-    if (h == INVALID_HANDLE_VALUE) {
-        return QDB_ERR_IO;
-    }
-    *out_fd = H2FD(h);
-    return QDB_OK;
-}
-
 int qdb__file_open(const char *path, int create,
                    qdb__fd_t *out_fd, int *out_is_new)
 {
