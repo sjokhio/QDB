@@ -1,71 +1,27 @@
-# qdb.dict — fuzzer dictionary for QDB's binary file format
-#
-# libFuzzer:  pass -dict=fuzz/qdb.dict
-# AFL++:      pass -x fuzz/qdb.dict
-
-# ── File magic: "QDB\r\n\x1a\n\0" ──────────────────────────────────────
 "QDB\x0d\x0a\x1a\x0a\x00"
-
-# ── Record type bytes ───────────────────────────────────────────────────
-"\x01"    # RT_MSG_PUSH
-"\x02"    # RT_MSG_LEASE
-"\x03"    # RT_MSG_ACK
-"\x04"    # RT_MSG_NACK
-"\x05"    # RT_MSG_EXPIRE
-"\x10"    # RT_CHECKPOINT
-"\xff"    # RT_PADDING
-
-# ── Two-phase commit marker ─────────────────────────────────────────────
-"\xab"    # QDB_COMMIT_MARKER
-
-# ── Header field constants (little-endian) ──────────────────────────────
-
-# Format version = 1
+"\x01"
+"\x02"
+"\x03"
+"\x04"
+"\x05"
+"\x10"
+"\xff"
+"\xab"
 "\x01\x00\x00\x00"
-
-# Page size = 4096 = 0x1000
 "\x00\x10\x00\x00"
-
-# Zero u32 / max u32
 "\x00\x00\x00\x00"
 "\xff\xff\xff\xff"
-
-# Zero u64 / max u64
 "\x00\x00\x00\x00\x00\x00\x00\x00"
 "\xff\xff\xff\xff\xff\xff\xff\xff"
-
-# ── Interesting header offset values (LE u64) ───────────────────────────
-
-# QDB_HDR_SIZE = 4096 = 0x1000
 "\x00\x10\x00\x00\x00\x00\x00\x00"
-
-# QDB_HDR_SIZE + 1 = 4097
 "\x01\x10\x00\x00\x00\x00\x00\x00"
-
-# ── Fixed payload sizes as LE u32 ───────────────────────────────────────
-
-# QDB_PAYLOAD_LEASE_SIZE = 24
 "\x18\x00\x00\x00"
-
-# QDB_PAYLOAD_ACK_SIZE = 16
 "\x10\x00\x00\x00"
-
-# QDB_PAYLOAD_CHECKPOINT_SIZE = 24
 "\x18\x00\x00\x00"
-
-# QDB_PUSH_MIN_PLEN = 10
 "\x0a\x00\x00\x00"
-
-# QDB_REC_HDR_SIZE = 9
 "\x09\x00\x00\x00"
-
-# ── Boundary queue name lengths ─────────────────────────────────────────
-"\x01"    # name_len = 1  (minimum)
-"\xff"    # name_len = 255 (maximum QDB_QUEUE_NAME_MAX)
-"\x00"    # name_len = 0  (invalid — should be rejected)
-
-# ── Interesting CRC values ──────────────────────────────────────────────
-# CRC32 of empty input = 0x00000000
+"\x01"
+"\xff"
+"\x00"
 "\x00\x00\x00\x00"
-# CRC32 of "123456789" = 0xCBF43926
 "\x26\x39\xf4\xcb"

@@ -23,12 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(_WIN32)
-#  include <windows.h>
-#else
-#  include <unistd.h>
-#endif
+#include "test_platform.h"
 
 /* -------------------------------------------------------------------------
  * Minimal test harness
@@ -68,21 +63,7 @@ static void test_end(void) { printf("%s\n", g_test_ok ? "ok" : "FAILED"); }
 
 static void cleanup(const char *path)
 {
-    char sidecar[512];
-    size_t plen = strlen(path);
-#if defined(_WIN32)
-    DeleteFileA(path);
-    if (plen + 6 < sizeof(sidecar)) {
-        memcpy(sidecar, path, plen); memcpy(sidecar + plen, "-wal",  5); DeleteFileA(sidecar);
-        memcpy(sidecar, path, plen); memcpy(sidecar + plen, "-lock", 6); DeleteFileA(sidecar);
-    }
-#else
-    (void)unlink(path);
-    if (plen + 6 < sizeof(sidecar)) {
-        memcpy(sidecar, path, plen); memcpy(sidecar + plen, "-wal",  5); (void)unlink(sidecar);
-        memcpy(sidecar, path, plen); memcpy(sidecar + plen, "-lock", 6); (void)unlink(sidecar);
-    }
-#endif
+    qdb_test_cleanup_files(path);
 }
 
 static qdb_t *open_fresh(const char *path)
@@ -636,8 +617,7 @@ static void test_expire_io_failure(void)
     uint64_t end_before = db->log_end_offset;
     force_expire(db, msg.lease_id);
 
-    int saved_fd = (int)db->fd;
-    close(saved_fd);
+    (void)qdb_test_close_fd(db->fd);
 
     int rc = qdb_process_expired_leases(db);
     ASSERT(rc < 0);

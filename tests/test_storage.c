@@ -25,15 +25,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(_WIN32)
-#  include <windows.h>
-#  include <io.h>
-#else
-#  include <fcntl.h>
-#  include <unistd.h>
-#  include <sys/stat.h>
-#endif
+#define QDB_TEST_PLATFORM_RAW_IO
+#include "test_platform.h"
 
 /* -------------------------------------------------------------------------
  * Minimal test harness
@@ -79,69 +72,19 @@ static void test_end(void)
 static int raw_write_at(const char *path, uint64_t offset,
                         const void *buf, size_t len)
 {
-#if defined(_WIN32)
-    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, NULL,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE) { return -1; }
-    LARGE_INTEGER li;
-    li.QuadPart = (LONGLONG)offset;
-    SetFilePointerEx(h, li, NULL, FILE_BEGIN);
-    DWORD written = 0;
-    WriteFile(h, buf, (DWORD)len, &written, NULL);
-    CloseHandle(h);
-    return ((size_t)written == len) ? 0 : -1;
-#else
-    int fd = open(path, O_WRONLY);
-    if (fd < 0) { return -1; }
-    ssize_t n = pwrite(fd, buf, len, (off_t)offset);
-    close(fd);
-    return (n == (ssize_t)len) ? 0 : -1;
-#endif
+    return qdb_test_raw_write_at(path, offset, buf, len);
 }
 
 /* Return the size of the file at path, or -1 on error. */
 static int64_t raw_file_size(const char *path)
 {
-#if defined(_WIN32)
-    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE) { return -1; }
-    LARGE_INTEGER li;
-    BOOL ok = GetFileSizeEx(h, &li);
-    CloseHandle(h);
-    return ok ? (int64_t)li.QuadPart : -1;
-#else
-    struct stat st;
-    if (stat(path, &st) != 0) { return -1; }
-    return (int64_t)st.st_size;
-#endif
+    return qdb_test_raw_file_size(path);
 }
 
 /* Delete path and its sidecar files (-wal, -lock). */
 static void cleanup(const char *path)
 {
-    char sidecar[512];
-    size_t plen = strlen(path);
-
-#if defined(_WIN32)
-    DeleteFileA(path);
-    if (plen + 5 < sizeof(sidecar)) {
-        memcpy(sidecar, path, plen);
-        memcpy(sidecar + plen, "-wal",  5);
-        DeleteFileA(sidecar);
-        memcpy(sidecar + plen, "-lock", 6);
-        DeleteFileA(sidecar);
-    }
-#else
-    (void)unlink(path);
-    if (plen + 6 < sizeof(sidecar)) {
-        memcpy(sidecar, path, plen);
-        memcpy(sidecar + plen, "-wal",  5);
-        (void)unlink(sidecar);
-        memcpy(sidecar + plen, "-lock", 6);
-        (void)unlink(sidecar);
-    }
-#endif
+    qdb_test_cleanup_files(path);
 }
 
 /* -------------------------------------------------------------------------

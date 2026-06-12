@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include "test_platform.h"
 
 /* -------------------------------------------------------------------------
  * Minimal test harness
@@ -114,17 +114,17 @@ static void test_open_creates_database(void)
     const char *path = "basic_test_open.qdb";
     test_begin("qdb_open creates a new database successfully");
     /* Clean up any leftover from a previous run. */
-    (void)unlink(path);
-    (void)unlink("basic_test_open.qdb-wal");
-    (void)unlink("basic_test_open.qdb-lock");
+    (void)qdb_test_remove_file(path);
+    (void)qdb_test_remove_file("basic_test_open.qdb-wal");
+    (void)qdb_test_remove_file("basic_test_open.qdb-lock");
 
     qdb_t *db = qdb_open(path);
     ASSERT(db != NULL);
     qdb_close(db);
 
-    (void)unlink(path);
-    (void)unlink("basic_test_open.qdb-wal");
-    (void)unlink("basic_test_open.qdb-lock");
+    (void)qdb_test_remove_file(path);
+    (void)qdb_test_remove_file("basic_test_open.qdb-wal");
+    (void)qdb_test_remove_file("basic_test_open.qdb-lock");
     test_end();
 }
 

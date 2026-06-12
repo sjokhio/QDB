@@ -22,12 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(_WIN32)
-#  include <windows.h>
-#else
-#  include <unistd.h>
-#endif
+#include "test_platform.h"
 
 /* -------------------------------------------------------------------------
  * Minimal test harness
@@ -67,21 +62,7 @@ static void test_end(void) { printf("%s\n", g_test_ok ? "ok" : "FAILED"); }
 
 static void cleanup(const char *path)
 {
-    char sidecar[512];
-    size_t plen = strlen(path);
-#if defined(_WIN32)
-    DeleteFileA(path);
-    if (plen + 6 < sizeof(sidecar)) {
-        memcpy(sidecar, path, plen); memcpy(sidecar + plen, "-wal",  5); DeleteFileA(sidecar);
-        memcpy(sidecar, path, plen); memcpy(sidecar + plen, "-lock", 6); DeleteFileA(sidecar);
-    }
-#else
-    (void)unlink(path);
-    if (plen + 6 < sizeof(sidecar)) {
-        memcpy(sidecar, path, plen); memcpy(sidecar + plen, "-wal",  5); (void)unlink(sidecar);
-        memcpy(sidecar, path, plen); memcpy(sidecar + plen, "-lock", 6); (void)unlink(sidecar);
-    }
-#endif
+    qdb_test_cleanup_files(path);
 }
 
 /* Queue-find callback used with qdb__state_iter_queues. */
@@ -510,11 +491,7 @@ static void test_push_append_failure_no_mutation(void)
     }
 
     /* Force I/O failure by closing the underlying fd directly. */
-#if defined(_WIN32)
-    CloseHandle((HANDLE)db->fd);
-#else
-    (void)close((int)db->fd);
-#endif
+    (void)qdb_test_close_fd(db->fd);
     db->fd = QDB__INVALID_FD;
 
     /* Push must fail. */
