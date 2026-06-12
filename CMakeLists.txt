@@ -25,6 +25,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(QDB_BUILD_TESTS        "Build the test suite"              ON)
 option(QDB_BUILD_EXAMPLES     "Build example programs"            ON)
 option(QDB_BUILD_BENCHMARKS   "Build benchmark programs"          OFF)
+option(QDB_BUILD_FUZZ         "Build fuzz harnesses"              OFF)
+option(QDB_FUZZ_STANDALONE    "Build fuzz harnesses as standalone file-replay tools (no fuzzing engine)" OFF)
 option(QDB_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(QDB_SANITIZERS         "Enable AddressSanitizer + UBSan"   OFF)
 
@@ -147,6 +149,14 @@ endif()
 
 if(QDB_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
+endif()
+
+# ---------------------------------------------------------------------------
+# Fuzz harnesses
+# ---------------------------------------------------------------------------
+
+if(QDB_BUILD_FUZZ)
+    add_subdirectory(fuzz)
 endif()
 
 # ---------------------------------------------------------------------------

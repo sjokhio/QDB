@@ -1,0 +1,110 @@
+name: Fuzz — smoke test
+
+# Run a short fuzz session on every push to main and on PRs that touch
+# the storage layer, fuzz harnesses, or the CI workflow itself.
+#
+# This is NOT a long-running fuzzing campaign — it runs each harness for
+# 30 seconds to catch regressions introduced by recent changes.  Real
+# campaigns should be run manually (see docs/fuzzing.md).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'fuzz/**'
+      - '.github/workflows/fuzz.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'fuzz/**'
+      - '.github/workflows/fuzz.yml'
+
+jobs:
+  fuzz-smoke:
+    name: libFuzzer smoke (Clang, 30 s per target)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Clang + libFuzzer
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y clang llvm
+
+      # Build the library with ASan+UBSan so the sanitizers also fire inside
+      # the library code, not just in the harness.
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang \
+            -DQDB_BUILD_TESTS=OFF \
+            -DQDB_BUILD_EXAMPLES=OFF \
+            -DQDB_BUILD_FUZZ=ON \
+            -DQDB_SANITIZERS=ON \
+            -DQDB_WARNINGS_AS_ERRORS=OFF
+
+      - name: Build fuzz targets and seed generator
+        run: cmake --build build --parallel --target fuzz_record_parser fuzz_replay fuzz_header gen_seeds
+
+      # Generate seed corpus from real QDB databases so the fuzzer starts
+      # from meaningful inputs.
+      - name: Generate seed corpus
+        run: |
+          cd build
+          mkdir -p fuzz/corpus
+          ./fuzz/gen_seeds fuzz/corpus
+
+      # Run each harness for 30 seconds.  libFuzzer exits with code 0 on
+      # time-out and non-zero on crash/asan finding.
+      - name: Fuzz fuzz_record_parser (30 s)
+        run: |
+          ./build/fuzz/fuzz_record_parser \
+            -max_total_time=30 \
+            -dict=fuzz/qdb.dict \
+            -timeout=5 \
+            build/fuzz/corpus/record_parser
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+      - name: Fuzz fuzz_replay (30 s)
+        run: |
+          ./build/fuzz/fuzz_replay \
+            -max_total_time=30 \
+            -dict=fuzz/qdb.dict \
+            -timeout=5 \
+            build/fuzz/corpus/replay
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+      - name: Fuzz fuzz_header (30 s)
+        run: |
+          ./build/fuzz/fuzz_header \
+            -max_total_time=30 \
+            -dict=fuzz/qdb.dict \
+            -timeout=5 \
+            build/fuzz/corpus/header
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+      # Upload any crash artifacts produced during the run.
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: |
+            crash-*
+            leak-*
+            oom-*
+            timeout-*
+          if-no-files-found: ignore
+          retention-days: 30
