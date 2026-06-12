@@ -567,10 +567,51 @@ int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
     return QDB_OK;
 }
 
-int qdb_ack(qdb_t *db, uint64_t msg_id)
+int qdb_ack(qdb_t *db, uint64_t msg_id, uint64_t lease_id)
 {
-    (void)db; (void)msg_id;
-    return QDB_ERR_NOENT;
+    struct qdb__msg   *m;
+    struct qdb__queue *q;
+    uint8_t            ack_buf[QDB_PAYLOAD_ACK_SIZE];
+    uint64_t           new_end;
+    int                rc;
+
+    if (!db) { return QDB_ERR_INVAL; }
+
+    m = qdb__msg_get(db->state, msg_id);
+    if (!m)                              { return QDB_ERR_NOENT; }
+    if (m->state == QDB_MSG_STATE_ACKED) { return QDB_ERR_NOENT; }
+    if (m->state != QDB_MSG_STATE_LEASED){ return QDB_ERR_NOENT; }
+    if (m->lease_id != lease_id)         { return QDB_ERR_INVAL; }
+
+    qdb__put_u64le(ack_buf + QDB_ACK_OFF_MSG_ID,   msg_id);
+    qdb__put_u64le(ack_buf + QDB_ACK_OFF_LEASE_ID, lease_id);
+
+    /* --- durable append --- */
+    new_end = db->log_end_offset;
+    rc = qdb__append_record(db->fd, QDB_RT_MSG_ACK,
+                            ack_buf, QDB_PAYLOAD_ACK_SIZE, &new_end);
+    if (rc != QDB_OK) { return rc; }
+
+    /* --- persist header --- */
+    db->log_end_offset = new_end;
+    if (qdb__header_update(db->fd, db) != QDB_OK) {
+        return QDB_ERR_IO;
+    }
+
+    /* --- update in-memory state --- */
+    q = qdb__queue_get(db->state, m->queue_name, m->queue_name_len);
+    if (q) {
+        q->leased_count--;
+        q->acked_count++;
+    }
+
+    qdb__lease_remove(db->state, lease_id);
+
+    m->state           = QDB_MSG_STATE_ACKED;
+    m->lease_id        = 0;
+    m->lease_expiry_us = 0;
+
+    return QDB_OK;
 }
 
 /* -------------------------------------------------------------------------

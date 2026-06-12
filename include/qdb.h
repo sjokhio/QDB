@@ -59,7 +59,8 @@ extern "C" {
 /** The requested queue is empty; there is no message to pop. */
 #define QDB_ERR_EMPTY    (-4)
 
-/** The message ID passed to qdb_ack does not match any pending message. */
+/** The message ID passed to qdb_ack does not match any leased message,
+ *  or the message has already been acknowledged. */
 #define QDB_ERR_NOENT    (-5)
 
 /** A memory allocation failed. */
@@ -216,19 +217,24 @@ int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg);
  * qdb_ack — acknowledge and permanently delete a leased message.
  *
  * Marks the message identified by @msg_id as permanently consumed.  The
- * message is removed from the database and will not be redelivered.
+ * message is removed from the active queue and will not be redelivered.
+ * Both @msg_id and @lease_id must match the qdb_msg_t returned by the
+ * qdb_pop() that granted the lease.
  *
- * @msg_id must be the id field from a qdb_msg_t previously returned by
- * qdb_pop() on the same handle, and the lease must still be active.
+ * @db        Open database handle.  Must not be NULL.
+ * @msg_id    Message identifier: qdb_msg_t.id.
+ * @lease_id  Lease identifier: qdb_msg_t.lease_id.  Must match the active
+ *            lease on the message; guards against stale acknowledgements
+ *            after a lease has expired and been re-granted to another caller.
  *
- * @db      Open database handle.  Must not be NULL.
- * @msg_id  Message identifier from qdb_msg_t.id.
- *
- * @return  QDB_OK        on success.
- *          QDB_ERR_NOENT if @msg_id does not match any leased message.
- *          QDB_ERR_IO    on a flush failure.
+ * @return  QDB_OK         on success.
+ *          QDB_ERR_INVAL  if @db is NULL, or @lease_id does not match the
+ *                         active lease on @msg_id.
+ *          QDB_ERR_NOENT  if @msg_id does not exist, has already been
+ *                         acknowledged, or is not currently leased.
+ *          QDB_ERR_IO     on a flush failure.
  */
-int qdb_ack(qdb_t *db, uint64_t msg_id);
+int qdb_ack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
 
 /* -------------------------------------------------------------------------
  * Limits

@@ -116,7 +116,7 @@ if (qdb_pop(db, "jobs", &msg) == QDB_OK) {
     /* Process msg.data (msg.len bytes) ... */
 
     /* Acknowledge delivery to remove the message permanently. */
-    qdb_ack(db, msg.id);
+    qdb_ack(db, msg.id, msg.lease_id);
 
     /* Release the heap-allocated queue name and data copy. */
     qdb_msg_free(&msg);

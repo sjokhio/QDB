@@ -158,11 +158,11 @@ static void test_pop_null_db_returns_inval(void)
     test_end();
 }
 
-static void test_ack_stub_returns_noent(void)
+static void test_ack_null_db_returns_inval(void)
 {
-    test_begin("qdb_ack stub returns QDB_ERR_NOENT (unimplemented)");
-    int rc = qdb_ack(NULL, 0);
-    ASSERT_EQ(rc, QDB_ERR_NOENT);
+    test_begin("qdb_ack(NULL, ...) returns QDB_ERR_INVAL");
+    int rc = qdb_ack(NULL, 0, 0);
+    ASSERT_EQ(rc, QDB_ERR_INVAL);
     test_end();
 }
 
@@ -205,7 +205,7 @@ int main(void)
     test_close_null_is_safe();
     test_push_null_db_returns_inval();
     test_pop_null_db_returns_inval();
-    test_ack_stub_returns_noent();
+    test_ack_null_db_returns_inval();
     test_constants();
     test_version_number();
 

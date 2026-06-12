@@ -177,13 +177,24 @@ Note that `qdb_pop()` reads the payload from the main file at step 6, not from t
 ### 3.5 `qdb_ack()` — full write path
 
 ```
-Application calls qdb_ack(db, msg_id)
+Application calls qdb_ack(db, msg_id, lease_id)
 │
-├─ 1. Look up msg_id in pending_acks — if not found, return QDB_ERR_NOENT
+├─ 1. Look up msg_id in message table
+│      Not found, not LEASED, or already ACKED → QDB_ERR_NOENT
+│      lease_id mismatch → QDB_ERR_INVAL
+│         (guards against stale acks after a lease has expired and
+│          been re-granted to a different caller)
 │
-├─ 2. Write RT_MSG_ACK to WAL (with msg_id and lease_id)
+├─ 2. Write RT_MSG_ACK record (msg_id + lease_id payload)
+│      fsync (two-phase, same protocol as push)
 │
-├─ 3. Remove from pending_acks
+├─ 3. Update log_end_offset in file header; fsync
+│
+├─ 4. Update in-memory state
+│      message.state  ← ACKED
+│      message.lease_id ← 0
+│      queue.leased_count--; queue.acked_count++
+│      Remove lease entry from lease table
 │
 └─ Return QDB_OK
 ```

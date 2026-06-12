@@ -26,7 +26,7 @@ int main(void)
      *   qdb_msg_t msg = {0};
      *   if (qdb_pop(db, "greetings", &msg) == QDB_OK) {
      *       printf("got: %.*s\n", (int)msg.len, (const char *)msg.data);
-     *       qdb_ack(db, msg.id);
+     *       qdb_ack(db, msg.id, msg.lease_id);
      *       qdb_msg_free(&msg);
      *   }
      *
