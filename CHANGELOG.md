@@ -29,8 +29,8 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 ### Security
 
-[Unreleased]: https://github.com/your-org/qdb/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/your-org/qdb/releases/tag/v1.0.0
+[Unreleased]: https://github.com/sjokhio/qdb/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/sjokhio/qdb/releases/tag/v1.0.0
 -->
 
-[Unreleased]: https://github.com/your-org/qdb/commits/main
+[Unreleased]: https://github.com/sjokhio/qdb/commits/main
