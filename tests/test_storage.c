@@ -138,7 +138,7 @@ static void test_open_new_database(void)
 
     test_begin("open new database: file size equals QDB_HDR_SIZE");
     if (db) {
-        int64_t sz = raw_file_size(path);
+        int64_t sz = qdb_test_raw_file_size_fd(db->fd);
         ASSERT_EQ(sz, (int64_t)QDB_HDR_SIZE);
     }
     test_end();

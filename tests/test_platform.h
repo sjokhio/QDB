@@ -129,6 +129,25 @@ static inline int64_t qdb_test_raw_file_size(const char *path)
     return (int64_t)st.st_size;
 #endif
 }
+
+static inline int64_t qdb_test_raw_file_size_fd(intptr_t fd)
+{
+#if defined(_WIN32)
+    LARGE_INTEGER size;
+
+    if (!GetFileSizeEx((HANDLE)fd, &size)) {
+        return -1;
+    }
+    return (int64_t)size.QuadPart;
+#else
+    struct stat st;
+
+    if (fstat((int)fd, &st) != 0) {
+        return -1;
+    }
+    return (int64_t)st.st_size;
+#endif
+}
 #endif
 
 #endif /* QDB_TEST_PLATFORM_H */
