@@ -84,9 +84,9 @@ scaffolded early, but the WAL write path is not wired to push/pop/ack today.
 All writes go directly to the main log file.  The WAL machinery will be
 activated in a future compaction phase.
 
-### Windows CI
-The platform abstraction layer (`qdb_platform.c`) has Windows code paths but
-they are untested in CI.  Linux and macOS are the validated platforms.
+### Platform CI
+Linux, macOS, and Windows builds and tests are validated in CI.  Windows
+coverage includes MSVC and clang-cl.
 
 ---
 

@@ -110,7 +110,7 @@ Complete API reference: [`docs/api.md`](docs/api.md)
 | **Crash recovery** | On `qdb_open`, QDB replays the append-only log and fully reconstructs queue state, requiring no manual repair step. |
 | **At-least-once delivery** | Messages are exclusively leased on pop. If your process crashes before acking, the lease expires and the message is automatically redelivered. |
 | **Small footprint** | Under 5 000 lines of C17. Zero dependencies beyond libc. The entire implementation is auditable in a day. |
-| **Cross-platform** | Linux, macOS, and Windows via thin platform shims over standard POSIX I/O. |
+| **Cross-platform** | Linux, macOS, and Windows via thin platform shims over POSIX and Win32 file APIs. |
 
 ---
 
@@ -213,7 +213,7 @@ target_link_libraries(my_app PRIVATE qdb::qdb)
 |---|---|---|
 | Linux (GCC / Clang) | Tested | `fdatasync` |
 | macOS (Apple clang) | Tested | `F_FULLFSYNC` |
-| Windows (MSVC) | Builds; untested in CI | `FlushFileBuffers` |
+| Windows (MSVC / clang-cl) | Tested in CI | `FlushFileBuffers` |
 
 ---
 
@@ -284,8 +284,8 @@ runtime, no package manager. Drop two files into your project.
 **Small and auditable.** The implementation targets under 5 000 lines of C17.
 A careful engineer can read the whole thing in a day.
 
-**Portable.** Linux, macOS, and Windows via standard POSIX I/O and thin
-platform shims with no `#ifdef` spaghetti in the core logic.
+**Portable.** Linux, macOS, and Windows via thin platform shims over POSIX
+and Win32 file APIs, with no `#ifdef` spaghetti in the core logic.
 
 ---
 
