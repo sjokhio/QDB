@@ -236,6 +236,32 @@ int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg);
  */
 int qdb_ack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
 
+/**
+ * qdb_nack — return a leased message to the queue without consuming it.
+ *
+ * Releases the lease on the message identified by @msg_id and returns it
+ * to the tail of its source queue as a PENDING message.  The message will
+ * be redelivered by the next qdb_pop() on that queue, providing
+ * at-least-once delivery semantics.
+ *
+ * Use qdb_nack() when a consumer encounters a transient error and cannot
+ * process the message right now but wants it to be retried.  Use
+ * qdb_ack() to permanently remove a successfully processed message.
+ *
+ * @db        Open database handle.  Must not be NULL.
+ * @msg_id    Message identifier: qdb_msg_t.id.
+ * @lease_id  Lease identifier: qdb_msg_t.lease_id.  Must match the active
+ *            lease on the message.
+ *
+ * @return  QDB_OK         on success; the message is back in the queue.
+ *          QDB_ERR_INVAL  if @db is NULL, or @lease_id does not match the
+ *                         active lease on @msg_id.
+ *          QDB_ERR_NOENT  if @msg_id does not exist, is not currently
+ *                         leased, or has already been acknowledged.
+ *          QDB_ERR_IO     on a flush failure.
+ */
+int qdb_nack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
+
 /* -------------------------------------------------------------------------
  * Limits
  * ---------------------------------------------------------------------- */

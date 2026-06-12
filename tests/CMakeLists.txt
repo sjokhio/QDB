@@ -137,3 +137,28 @@ target_link_options(test_ack PRIVATE
 add_test(NAME ack COMMAND test_ack
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# qdb_nack() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_nack test_nack.c)
+
+target_include_directories(test_nack PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_nack PRIVATE qdb::qdb)
+
+target_compile_options(test_nack PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_nack PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME nack COMMAND test_nack
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)

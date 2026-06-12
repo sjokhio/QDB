@@ -166,6 +166,14 @@ static void test_ack_null_db_returns_inval(void)
     test_end();
 }
 
+static void test_nack_null_db_returns_inval(void)
+{
+    test_begin("qdb_nack(NULL, ...) returns QDB_ERR_INVAL");
+    int rc = qdb_nack(NULL, 0, 0);
+    ASSERT_EQ(rc, QDB_ERR_INVAL);
+    test_end();
+}
+
 /* -------------------------------------------------------------------------
  * Tests: compile-time constants
  * ---------------------------------------------------------------------- */
@@ -206,6 +214,7 @@ int main(void)
     test_push_null_db_returns_inval();
     test_pop_null_db_returns_inval();
     test_ack_null_db_returns_inval();
+    test_nack_null_db_returns_inval();
     test_constants();
     test_version_number();
 
