@@ -1,58 +1,58 @@
 # QDB
 
-**QDB is SQLite for message queues** — a lightweight, embedded, persistent message queue library written in portable C.
+QDB is a lightweight embedded persistent message queue written in portable C.
+Drop `libqdb` into your application and get named, durable, crash-safe queues
+backed by an append-only log file — no server process, no daemon, no external
+dependencies beyond libc.
 
-Drop a single library into your application and get a durable, crash-safe queue with no server process, no daemons, and no external dependencies beyond libc.
-
----
-
-## Why QDB?
-
-Most message queue solutions fall into one of two camps:
-
-- **In-process, in-memory** — fast and simple, but no durability.  Data is lost on crash or restart.
-- **Network brokers** (Kafka, RabbitMQ, Redis Streams) — durable, but require running and operating a separate server.
-
-QDB occupies the gap: **embedded durability**. It is to message queues what SQLite is to relational databases — a file-backed engine that lives entirely inside your process.
+Think of it as SQLite for message queues: the entire queue database lives in a
+single file on disk.  Your process pushes messages in, pops them out with
+time-bounded leases, and acknowledges or negatively-acknowledges each one.  If
+your process crashes mid-flight, unacknowledged messages are automatically
+recovered and redelivered on the next open.
 
 ---
 
-## Design Philosophy
+## Why not Kafka, RabbitMQ, or Redis Streams?
 
-**Reliability first.**  QDB is designed for infrastructure software where data loss is unacceptable.  Every design decision prioritises crash safety over raw throughput.
+Those tools are the right choice when you need distribution, replication, or
+multi-tenant access control.  They come with operational weight: separate
+processes to manage, network round-trips on every operation, and infrastructure
+expertise to keep them running.
 
-**No surprises.**  The file format is stable, documented, and forward-compatible.  A queue written by QDB 1.0 will be readable by QDB 2.0.
+QDB fits a different niche — a single application that wants durable queues
+without the infrastructure:
 
-**Dependency-free.**  QDB links only against libc.  No Boost, no protobuf, no runtime, no package manager.  Drop two files into your project and go.
-
-**Small and auditable.**  The entire implementation targets under 5,000 lines of C.  A careful engineer can read the whole thing in a day.
-
-**Portable.**  QDB targets Linux, macOS, and Windows using only standard POSIX I/O where possible and thin platform shims where not.
-
----
-
-## Non-Goals (v1)
-
-QDB is deliberately not:
-
-- A distributed system
-- A replicated or clustered broker
-- A drop-in replacement for Kafka, RabbitMQ, or NATS
-- A networked service with an HTTP API
-- A multi-tenant system with authentication or access control
-
-If you need those things, a network broker is the right tool.  QDB targets the use-cases where a network broker is operational overkill.
+| | QDB | Redis / Kafka / RabbitMQ |
+|---|---|---|
+| Deployment | Single file | Separate server process |
+| Dependencies | None (libc only) | Network, runtime, ops infra |
+| Multi-process / multi-host | No | Yes |
+| Sustained throughput | ~1 000 – 5 000 msg/s | 100 000 + msg/s |
+| Durability | Crash-safe, single file | Configurable |
+| Operational cost | Zero | Non-trivial |
 
 ---
 
-## Features
+## When to use QDB
 
-- Persistent, crash-safe queues backed by an append-only log
-- Multiple named queues in a single database file
-- At-least-once delivery with explicit acknowledgement
-- Pure C17, warning-free on GCC, Clang, and MSVC
-- No external dependencies beyond libc
-- MIT licensed
+- A single-process application (a CLI tool, a daemon, an embedded system)
+  wants durable task queues without a broker.
+- You need at-least-once delivery with explicit acknowledgement and automatic
+  retry on crash.
+- Your write workload is hundreds to a few thousand messages per second.
+- You want a queue database you can copy, back up, or inspect with standard
+  file tools.
+- Running a broker is out of scope (resource-constrained device, air-gapped
+  host, simple deployment requirement).
+
+## When not to use QDB
+
+- Multiple processes or machines must share the same queue.
+- You need pub/sub fan-out, topic routing, or consumer groups.
+- Sustained throughput must exceed ~5 000 msg/s on commodity hardware.
+- The queue must survive host loss or require geographic replication.
+- You need a stable, production-hardened format today (QDB v1 is pre-release).
 
 ---
 
@@ -61,16 +61,16 @@ If you need those things, a network broker is the right tool.  QDB targets the u
 ### Requirements
 
 - CMake 3.20 or later
-- A C17-capable compiler (GCC 8+, Clang 7+, MSVC 2019+)
+- A C17-capable compiler: GCC 8+, Clang 7+, or MSVC 2019+
 
-### Quick start
+### From source
 
 ```sh
 git clone https://github.com/your-org/qdb.git
 cd qdb
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-ctest --test-dir build
+ctest --test-dir build          # run the test suite
 ```
 
 ### CMake options
@@ -90,7 +90,7 @@ include(FetchContent)
 FetchContent_Declare(
     qdb
     GIT_REPOSITORY https://github.com/your-org/qdb.git
-    GIT_TAG        v1.0.0
+    GIT_TAG        v0.1.0
 )
 FetchContent_MakeAvailable(qdb)
 
@@ -99,81 +99,122 @@ target_link_libraries(my_app PRIVATE qdb::qdb)
 
 ---
 
-## API Overview
+## API overview
 
 ```c
 #include <qdb.h>
 
-/* Open (or create) a queue database at the given path. */
-qdb_t *db = qdb_open("myapp.qdb");
+/* ── Lifecycle ─────────────────────────────────────────────────── */
 
-/* Push a message onto a named queue. */
-qdb_push(db, "jobs", "hello world", 11);
+qdb_t *db = qdb_open("myapp.qdb");  /* open or create; NULL on failure */
+qdb_close(db);                      /* flush, unlock, free */
 
-/* Pop the next available message from a queue. */
+/* ── Push ──────────────────────────────────────────────────────── */
+
+qdb_push(db, "jobs", "payload", 7); /* append to named queue */
+
+/* ── Pop → process → acknowledge ──────────────────────────────── */
+
+/* Call before popping to reclaim messages whose leases have expired. */
+qdb_process_expired_leases(db);
+
 qdb_msg_t msg = {0};
-if (qdb_pop(db, "jobs", &msg) == QDB_OK) {
-    /* Process msg.data (msg.len bytes) ... */
+int rc = qdb_pop(db, "jobs", &msg);
 
-    /* Acknowledge delivery to remove the message permanently. */
-    qdb_ack(db, msg.id, msg.lease_id);
-
-    /* Release the heap-allocated queue name and data copy. */
+if (rc == QDB_OK) {
+    /* msg.data and msg.queue are heap-allocated; owned by the caller. */
+    if (process(msg.data, msg.len) == SUCCESS) {
+        qdb_ack(db, msg.id, msg.lease_id);   /* remove permanently    */
+    } else {
+        qdb_nack(db, msg.id, msg.lease_id);  /* return to queue tail  */
+    }
     qdb_msg_free(&msg);
+} else if (rc == QDB_ERR_EMPTY) {
+    /* queue is empty */
 }
-
-qdb_close(db);
 ```
 
-See [include/qdb.h](include/qdb.h) for the full API reference and [examples/](examples/) for runnable programs.
+See [docs/api.md](docs/api.md) for the full API reference and ownership rules,
+[examples/job_worker.c](examples/job_worker.c) for a complete runnable example,
+and [docs/reliability.md](docs/reliability.md) for durability and delivery
+guarantees.
+
+---
+
+## Design philosophy
+
+**Reliability first.**  Every design decision prioritises crash safety over raw
+throughput.  A push that returns `QDB_OK` is durable: it will survive an
+immediate process kill.
+
+**No surprises.**  The file format is stable, documented, and forward-compatible.
+A queue written by QDB 0.1 will be readable by QDB 1.0.
+
+**Dependency-free.**  QDB links only against libc.  No Boost, no protobuf, no
+runtime, no package manager.  Drop two files into your project.
+
+**Small and auditable.**  The implementation targets under 5 000 lines of C.
+A careful engineer can read the whole thing in a day.
+
+**Portable.**  Linux, macOS, and Windows via standard POSIX I/O and thin
+platform shims.
+
+---
+
+## Non-goals (v1)
+
+- Distributed or replicated queues
+- Multi-process or networked access
+- Pub/sub fan-out or topic routing
+- Authentication or multi-tenancy
+- Throughput-optimised batch paths
+
+---
+
+## Project status
+
+QDB is under active development.  The API and on-disk format are **not yet
+stable**.  Do not use in production without understanding the limitations in
+[docs/mvp-status.md](docs/mvp-status.md).
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ---
 
 ## Roadmap
 
-### v1.0 — Foundation
-- Append-only storage engine
-- Named queues
-- Push / pop / ack
-- Crash recovery via write-ahead log
-- Compaction / log rotation
-- Stable on-disk format
+### v0.1 — Foundation (current)
+- Append-only storage engine with CRC-32 corruption detection
+- Named queues with push / pop / ack / nack
+- At-least-once delivery with time-bounded leases
+- Explicit lease expiry via `qdb_process_expired_leases`
+- Crash recovery: full state rebuilt from log on reopen
+- File-level exclusive lock (prevents double-open)
 
-### v1.1 — Quality of Life
-- Peek without dequeuing
-- Message TTL / expiry
-- Queue depth query
-- Consumer groups (multiple independent consumers on the same queue)
+### v0.2 — Compaction
+- Log compaction / rotation to reclaim disk space
+- `qdb_checkpoint()` explicit compaction API
 
-### v1.2 — Performance
-- Batch push / batch pop
-- Read-ahead buffering
-- mmap-backed index
+### v0.3 — Observability
+- `qdb_queue_depth()` — pending / leased / acked counts
+- `qdb_inspect` CLI tool
+- `qdb_peek()` — non-consuming read
 
-### v2.0 — Extended Semantics
-- Delayed delivery
-- Priority queues
-- Message metadata / headers
-
----
-
-## Project Status
-
-QDB is under active development.  The API and on-disk format are not yet stable.  See [CHANGELOG.md](CHANGELOG.md) for version history.
+### v1.0 — Stable
+- Stable on-disk format guarantee
+- Full Windows CI
+- Comprehensive fuzzing
 
 ---
 
 ## Contributing
 
-Contributions are welcome.  Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
-
----
+Contributions are welcome.  Please read [CONTRIBUTING.md](CONTRIBUTING.md)
+before opening a pull request.
 
 ## Security
 
-To report a vulnerability, please follow the process described in [SECURITY.md](SECURITY.md).
-
----
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
