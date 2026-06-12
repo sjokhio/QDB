@@ -16,7 +16,7 @@ Once v1.0 is released, this table will be updated with the supported version ran
 
 Please report security vulnerabilities by emailing the maintainers at:
 
-> **security@your-org.example**  *(replace with your actual address before publishing)*
+> **jokhiosd 8 gmail.com**  *(replace 8 with @)*
 
 Include in your report:
 
