@@ -174,6 +174,14 @@ static void test_nack_null_db_returns_inval(void)
     test_end();
 }
 
+static void test_expire_null_db_returns_inval(void)
+{
+    test_begin("qdb_process_expired_leases(NULL) returns QDB_ERR_INVAL");
+    int rc = qdb_process_expired_leases(NULL);
+    ASSERT_EQ(rc, QDB_ERR_INVAL);
+    test_end();
+}
+
 /* -------------------------------------------------------------------------
  * Tests: compile-time constants
  * ---------------------------------------------------------------------- */
@@ -215,6 +223,7 @@ int main(void)
     test_pop_null_db_returns_inval();
     test_ack_null_db_returns_inval();
     test_nack_null_db_returns_inval();
+    test_expire_null_db_returns_inval();
     test_constants();
     test_version_number();
 

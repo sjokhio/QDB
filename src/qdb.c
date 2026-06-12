@@ -668,6 +668,78 @@ int qdb_nack(qdb_t *db, uint64_t msg_id, uint64_t lease_id)
 }
 
 /* -------------------------------------------------------------------------
+ * qdb_process_expired_leases
+ * ---------------------------------------------------------------------- */
+
+static int expire_one(qdb_t *db, uint64_t lease_id, uint64_t msg_id)
+{
+    struct qdb__msg   *m;
+    struct qdb__queue *q;
+    uint8_t            buf[QDB_PAYLOAD_EXPIRE_SIZE];
+    uint64_t           new_end;
+    int                rc;
+
+    m = qdb__msg_get(db->state, msg_id);
+    if (!m || m->state != QDB_MSG_STATE_LEASED || m->lease_id != lease_id) {
+        return 0; /* stale entry — skip without error */
+    }
+
+    qdb__put_u64le(buf + QDB_ACK_OFF_MSG_ID,   msg_id);
+    qdb__put_u64le(buf + QDB_ACK_OFF_LEASE_ID, lease_id);
+
+    new_end = db->log_end_offset;
+    rc = qdb__append_record(db->fd, QDB_RT_MSG_EXPIRE,
+                            buf, QDB_PAYLOAD_EXPIRE_SIZE, &new_end);
+    if (rc != QDB_OK) { return rc; }
+
+    db->log_end_offset = new_end;
+    if (qdb__header_update(db->fd, db) != QDB_OK) { return QDB_ERR_IO; }
+
+    q = qdb__queue_get(db->state, m->queue_name, m->queue_name_len);
+
+    qdb__lease_remove(db->state, lease_id);
+
+    m->state           = QDB_MSG_STATE_PENDING;
+    m->lease_id        = 0;
+    m->lease_expiry_us = 0;
+    m->retry_count++;
+
+    if (q) {
+        q->leased_count--;
+        qdb__queue_pending_append(db->state, q, m);
+    }
+
+    return 0;
+}
+
+int qdb_process_expired_leases(qdb_t *db)
+{
+    uint64_t  now_us;
+    int       processed = 0;
+    uint32_t  b;
+
+    if (!db) { return QDB_ERR_INVAL; }
+
+    now_us = qdb__time_us();
+
+    for (b = 0; b < QDB__LEASE_BUCKETS; b++) {
+        struct qdb__lease *l = db->state->lease_buckets[b];
+        while (l != NULL) {
+            /* Save next before expire_one may free l via qdb__lease_remove */
+            struct qdb__lease *next = l->next_in_bucket;
+            if (l->expiry_us < now_us) {
+                int rc = expire_one(db, l->lease_id, l->msg_id);
+                if (rc != QDB_OK) { return rc; }
+                processed++;
+            }
+            l = next;
+        }
+    }
+
+    return processed;
+}
+
+/* -------------------------------------------------------------------------
  * Utilities
  * ---------------------------------------------------------------------- */
 

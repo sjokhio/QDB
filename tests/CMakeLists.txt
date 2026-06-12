@@ -162,3 +162,28 @@ target_link_options(test_nack PRIVATE
 add_test(NAME nack COMMAND test_nack
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# qdb_process_expired_leases() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_expire test_expire.c)
+
+target_include_directories(test_expire PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_expire PRIVATE qdb::qdb)
+
+target_compile_options(test_expire PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_expire PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME expire COMMAND test_expire
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)

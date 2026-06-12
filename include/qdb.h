@@ -262,6 +262,30 @@ int qdb_ack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
  */
 int qdb_nack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
 
+/**
+ * qdb_process_expired_leases — expire overdue leases and requeue messages.
+ *
+ * Scans all active leases and, for each whose deadline has passed, writes a
+ * durable RT_MSG_EXPIRE record and returns the message to the tail of its
+ * source queue as a PENDING message.  The message's retry_count is
+ * incremented.
+ *
+ * QDB has no background thread.  The application must call this function
+ * explicitly — before each qdb_pop(), or on a periodic timer — to ensure
+ * expired leases are processed in a timely fashion.
+ *
+ * Partial progress: if a disk write fails mid-scan, leases already expired
+ * in this call retain their new PENDING state; the failing lease and any
+ * leases not yet reached remain active.
+ *
+ * @db  Open database handle.  Must not be NULL.
+ *
+ * @return  Number of leases expired (>= 0) on success.
+ *          QDB_ERR_INVAL  if @db is NULL.
+ *          QDB_ERR_IO     if a durable write fails.
+ */
+int qdb_process_expired_leases(qdb_t *db);
+
 /* -------------------------------------------------------------------------
  * Limits
  * ---------------------------------------------------------------------- */
