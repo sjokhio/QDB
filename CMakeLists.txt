@@ -98,14 +98,24 @@ target_include_directories(qdb
         $<INSTALL_INTERFACE:include>
 )
 
-target_compile_options(qdb PRIVATE
-    ${QDB_WARNING_FLAGS}
-    ${QDB_SANITIZER_FLAGS}
-)
+# Warning flags: PRIVATE — do not force -Wall/-Werror onto consumers.
+target_compile_options(qdb PRIVATE ${QDB_WARNING_FLAGS})
 
-target_link_options(qdb PRIVATE
-    ${QDB_SANITIZER_FLAGS}
-)
+# Sanitizer flags: PUBLIC compile + INTERFACE link.
+#
+# A static library does not produce a final link step, so PRIVATE link
+# options are silently ignored by the linker.  Making compile options PUBLIC
+# ensures every consumer TU is instrumented consistently.  Making link
+# options INTERFACE ensures every consumer executable pulls in the sanitizer
+# runtime (-fsanitize=address,undefined resolves __asan_* / __ubsan_*
+# symbols that the instrumented archive objects reference).
+#
+# When QDB_SANITIZERS=OFF, QDB_SANITIZER_FLAGS is empty and these calls
+# are no-ops, so normal builds are unaffected.
+if(QDB_SANITIZER_FLAGS)
+    target_compile_options(qdb PUBLIC    ${QDB_SANITIZER_FLAGS})
+    target_link_options(qdb    INTERFACE ${QDB_SANITIZER_FLAGS})
+endif()
 
 # Windows: link against the system socket/timing libraries used internally
 if(WIN32)

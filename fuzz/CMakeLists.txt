@@ -27,17 +27,24 @@ cmake_minimum_required(VERSION 3.20)
 
 if(QDB_FUZZ_STANDALONE)
     set(_fuzz_mode standalone)
-elseif(CMAKE_C_COMPILER_ID MATCHES "Clang")
+elseif(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+    # Upstream LLVM clang (or afl-clang-fast): ships libclang_rt.fuzzer.
     set(_fuzz_mode libfuzzer)
 else()
-    # Non-Clang (GCC, MSVC): fall back to standalone replay harness.
-    # AFL++ users: use afl-clang-fast (which IS Clang-based) for libfuzzer mode,
-    # or set QDB_FUZZ_STANDALONE=ON explicitly for afl-gcc-fast.
+    # Apple clang: has the -fsanitize=fuzzer instrumentation pass but does NOT
+    # ship the fuzzer runtime library (libclang_rt.fuzzer_osx.a), so linking
+    # fails.  Fall back to standalone.  To use libFuzzer on macOS, install
+    # upstream LLVM (e.g. 'brew install llvm') and set
+    # CC=$(brew --prefix llvm)/bin/clang.
+    #
+    # GCC and MSVC also land here.  AFL++ users: use afl-clang-fast (which
+    # reports as "Clang") for libfuzzer mode, or set QDB_FUZZ_STANDALONE=ON
+    # with afl-gcc-fast.
     set(_fuzz_mode standalone)
     message(STATUS
-        "Fuzz: compiler '${CMAKE_C_COMPILER_ID}' is not Clang — "
-        "building standalone harnesses instead of libFuzzer targets.  "
-        "Set CC=clang or CC=afl-clang-fast for instrumented builds.")
+        "Fuzz: compiler '${CMAKE_C_COMPILER_ID}' does not provide the "
+        "libFuzzer runtime — building standalone harnesses.  "
+        "Use upstream LLVM clang or afl-clang-fast for instrumented builds.")
 endif()
 
 if(_fuzz_mode STREQUAL libfuzzer)
@@ -101,6 +108,17 @@ add_fuzz_target(fuzz_header        fuzz_header.c)
 
 add_executable(gen_seeds gen_seeds.c)
 target_link_libraries(gen_seeds PRIVATE qdb::qdb)
+
+# gen_seeds links against qdb::qdb, which may have been compiled with
+# QDB_SANITIZER_FLAGS (e.g. -fsanitize=address,undefined) when
+# QDB_SANITIZERS=ON.  Apply the same flags here so the linker can resolve
+# the sanitizer runtime symbols that the instrumented library objects reference.
+# QDB_SANITIZER_FLAGS is already empty on MSVC, so no extra guard is needed.
+if(QDB_SANITIZER_FLAGS)
+    target_compile_options(gen_seeds PRIVATE ${QDB_SANITIZER_FLAGS})
+    target_link_options(gen_seeds PRIVATE ${QDB_SANITIZER_FLAGS})
+endif()
+
 if(NOT MSVC)
     target_compile_options(gen_seeds PRIVATE -Wall)
 endif()
