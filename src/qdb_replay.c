@@ -43,7 +43,9 @@ static int replay_push(qdb_t *db, struct qdb__state *st,
     msg_id   = qdb__get_u64le(prefix + QDB_PUSH_OFF_MSG_ID);
     name_len = prefix[QDB_PUSH_OFF_QNAME_LEN];
 
-    if (name_len == 0 || name_len > QDB_QUEUE_NAME_MAX) {
+    /* Upper-bound omitted: name_len is uint8_t so > QDB_QUEUE_NAME_MAX (255)
+     * is impossible and would trigger -Wtype-limits on GCC. */
+    if (name_len == 0) {
         return QDB_ERR_CORRUPT;
     }
     if (plen < (uint32_t)(QDB_PUSH_HDR_SIZE + (uint32_t)name_len)) {
