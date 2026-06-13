@@ -237,3 +237,26 @@ target_link_options(test_open_ex PRIVATE
 add_test(NAME open_ex COMMAND test_open_ex
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# Multi-process test foundation
+# ---------------------------------------------------------------------------
+
+add_executable(test_mp test_mp.c)
+
+target_link_libraries(test_mp PRIVATE qdb::qdb)
+
+target_compile_options(test_mp PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_mp PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME mp COMMAND test_mp
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+set_tests_properties(mp PROPERTIES TIMEOUT 15)
