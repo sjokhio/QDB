@@ -606,7 +606,7 @@ static void test_ack_io_failure_no_state_change(void)
     ASSERT_NOTNULL(m_before);
     ASSERT_EQ((int)m_before->state, (int)QDB_MSG_STATE_LEASED);
 
-    /* Destroy the fd so the ack write will fail */
+    /* Close the QDB file handle so the ack write fails. */
     (void)qdb_test_close_fd(db->fd);
 
     int rc = qdb_ack(db, msg.id, msg.lease_id);

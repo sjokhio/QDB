@@ -1,10 +1,8 @@
 /*
  * test_basic.c — basic smoke tests for the QDB public API
  *
- * These tests verify that the library links correctly and that the
- * utility functions behave as documented.  Tests for queue operations
- * (push / pop / ack) are written here as stubs; they will be filled in
- * once the storage engine is implemented.
+ * These tests verify that the library links correctly and that basic public
+ * API behavior, utility functions, and constants match their contracts.
  *
  * The test harness is a minimal, dependency-free framework: each test is
  * a function that calls ASSERT() macros.  Any failing assertion prints a
@@ -136,7 +134,7 @@ static void test_close_null_is_safe(void)
 }
 
 /* -------------------------------------------------------------------------
- * Tests: stub return codes
+ * Tests: invalid-argument return codes
  * ---------------------------------------------------------------------- */
 
 static void test_push_null_db_returns_inval(void)

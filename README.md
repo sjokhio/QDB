@@ -253,6 +253,24 @@ if (rc == QDB_OK) {
 fprintf(stderr, "%s\n", qdb_errmsg(rc));   /* human-readable description  */
 ```
 
+To use a custom lease timeout:
+
+```c
+qdb_open_opts_t opts = {0};
+opts.lease_timeout_s = 120;
+qdb_t *db = qdb_open_ex("myapp.qdb", &opts);
+```
+
+To read database and queue statistics:
+
+```c
+qdb_stats_t db_stats;
+qdb_queue_stats_t queue_stats;
+
+qdb_stats(db, &db_stats);
+qdb_queue_stats(db, "jobs", &queue_stats);
+```
+
 **Key error codes:**
 
 | Code | Meaning |
@@ -298,12 +316,12 @@ and Win32 file APIs, with no `#ifdef` spaghetti in the core logic.
 Implemented after v0.1.0:
 
 - Queue statistics API
+- Configurable lease timeout API
 
 Planned v0.2.0 focus:
 
 - Multi-process stress testing
 - `qdb_compact()`
-- Configurable lease timeout API
 
 Non-goals:
 

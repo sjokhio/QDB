@@ -583,7 +583,7 @@ static void test_pop_io_failure_no_state_change(void)
     uint32_t pending_before = q->pending_count;
     uint32_t leased_before  = q->leased_count;
 
-    /* Destroy the fd so the lease write will fail */
+    /* Close the QDB file handle so the lease write fails. */
     (void)qdb_test_close_fd(db->fd);
 
     qdb_msg_t msg = {0};
@@ -598,7 +598,7 @@ static void test_pop_io_failure_no_state_change(void)
     ASSERT_NULL(msg.queue);
     ASSERT_NULL(msg.data);
 
-    /* Prevent qdb_close from double-closing the fd (it's already closed) */
+    /* Prevent qdb_close from closing the file handle a second time. */
     db->fd = QDB__INVALID_FD;
     qdb_close(db);
     cleanup(path);

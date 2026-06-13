@@ -2,8 +2,8 @@
  * test_replay.c — log replay and in-memory state reconstruction tests
  *
  * Tests write raw records directly into the database file (bypassing the
- * stubbed push/pop/ack APIs) then reopen the database and verify that the
- * reconstructed in-memory state is correct.
+ * public queue-operation APIs), then reopen the database and verify that
+ * the reconstructed in-memory state is correct.
  *
  * SPDX-License-Identifier: MIT
  */

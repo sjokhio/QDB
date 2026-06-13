@@ -96,7 +96,7 @@ static void test_expire_none(void)
     /* Empty database */
     ASSERT_EQ(qdb_process_expired_leases(db), 0);
 
-    /* Push and pop — lease is fresh (30 s in the future) */
+    /* Push and pop; the default lease is fresh and must remain active. */
     ASSERT_EQ(qdb_push(db, "q", "x", 1), QDB_OK);
     qdb_msg_t msg = {0};
     ASSERT_EQ(qdb_pop(db, "q", &msg), QDB_OK);

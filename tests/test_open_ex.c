@@ -1,9 +1,9 @@
 /*
  * test_open_ex.c — qdb_open_ex() and configurable lease timeout tests
  *
- * All expiry-related tests use the force_expire() technique (setting
- * l->expiry_us = 1) rather than sleeping, keeping the suite deterministic
- * and fast.  No sleep calls appear in this file.
+ * Tests that need an elapsed lease use force_expire() (setting expiry_us to
+ * 1) rather than sleeping.  Other tests inspect the calculated expiry window
+ * directly, keeping the suite deterministic and fast.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -181,7 +181,7 @@ static void test_open_backward_compat_timeout(void)
  *
  * Strategy: record wall-clock bounds around qdb_pop(), then assert the
  * stored expiry_us falls within [before + timeout, after + timeout].
- * No sleep required.
+ * The bounds check avoids waiting for the lease to expire.
  * ---------------------------------------------------------------------- */
 
 static void test_open_ex_expiry_reflects_timeout(void)
@@ -267,7 +267,7 @@ static void test_open_ex_custom_timeout_expires(void)
     qdb_msg_t msg = {0};
     ASSERT_EQ(qdb_pop(db, "q", &msg), QDB_OK);
 
-    /* Verify expiry is in the far future before forcing it. */
+    /* Verify the configured lease is still active before forcing expiry. */
     struct qdb__msg *m = qdb__msg_get(db->state, msg.id);
     ASSERT_NOTNULL(m);
     ASSERT(m->lease_expiry_us > qdb__time_us() + UINT64_C(3500000000)); /* > 3500 s away */

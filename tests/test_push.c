@@ -490,7 +490,7 @@ static void test_push_append_failure_no_mutation(void)
         saved_pending = fc.found.pending_count;
     }
 
-    /* Force I/O failure by closing the underlying fd directly. */
+    /* Force I/O failure by closing the underlying QDB file handle. */
     (void)qdb_test_close_fd(db->fd);
     db->fd = QDB__INVALID_FD;
 
@@ -512,7 +512,7 @@ static void test_push_append_failure_no_mutation(void)
         ASSERT_EQ(fc.found.pending_count, saved_pending);
     }
 
-    /* qdb_close with a broken fd: header update skipped, memory freed cleanly. */
+    /* Mark the closed handle invalid so qdb_close only frees resources. */
     qdb_close(db);
     test_end();
     cleanup(path);

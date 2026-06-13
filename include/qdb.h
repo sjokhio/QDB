@@ -32,10 +32,16 @@ extern "C" {
  * Version
  * ---------------------------------------------------------------------- */
 
+/** Major component of the QDB library version. */
 #define QDB_VERSION_MAJOR 0
+
+/** Minor component of the QDB library version. */
 #define QDB_VERSION_MINOR 1
+
+/** Patch component of the QDB library version. */
 #define QDB_VERSION_PATCH 0
 
+/** Numeric library version: MAJOR * 10000 + MINOR * 100 + PATCH. */
 #define QDB_VERSION_NUMBER \
     ((QDB_VERSION_MAJOR) * 10000 + (QDB_VERSION_MINOR) * 100 + (QDB_VERSION_PATCH))
 
@@ -52,15 +58,15 @@ extern "C" {
 /** The database file is corrupt or has an unrecognised format. */
 #define QDB_ERR_CORRUPT  (-2)
 
-/** An argument passed by the caller is invalid (NULL pointer, empty
- *  queue name, zero-length message, etc.). */
+/** An argument passed by the caller is invalid (NULL pointer, empty or
+ *  oversized queue name, oversized message, etc.). */
 #define QDB_ERR_INVAL    (-3)
 
 /** The requested queue is empty; there is no message to pop. */
 #define QDB_ERR_EMPTY    (-4)
 
-/** The message ID passed to qdb_ack does not match any leased message,
- *  or the message has already been acknowledged. */
+/** A requested message or queue does not exist, or a message is not in the
+ *  state required by the requested operation. */
 #define QDB_ERR_NOENT    (-5)
 
 /** A memory allocation failed. */
@@ -93,8 +99,8 @@ typedef struct qdb qdb_t;
  * Zero-initialising a qdb_msg_t (= {0} or memset to 0) is always safe.
  *
  * @id        Opaque monotonic message identifier.  Pass to qdb_ack().
- * @lease_id  Identifier of the lease granted by qdb_pop().  Exposed for
- *            diagnostics and future lease-aware qdb_ack() variants.
+ * @lease_id  Identifier of the lease granted by qdb_pop().  Pass it with
+ *            @id to qdb_ack() or qdb_nack() to resolve the active lease.
  * @queue     Heap-allocated, null-terminated name of the source queue.
  * @data      Heap-allocated copy of the raw message payload.
  *            NULL when @len is zero.
@@ -178,13 +184,9 @@ qdb_t *qdb_open(const char *path);
  *        Must be zero-initialised before any fields are set so that any
  *        future fields added to qdb_open_opts_t default correctly.
  *
- * @return  Pointer to a new qdb_t handle on success.
- *          NULL on failure:
- *            @path is NULL;
- *            QDB_ERR_IO      — filesystem or flush failure;
- *            QDB_ERR_CORRUPT — unrecognised or corrupt database file;
- *            QDB_ERR_NOMEM   — memory allocation failure;
- *            QDB_ERR_LOCKED  — database locked by another process.
+ * @return  Pointer to a new qdb_t handle on success, or NULL if @path is
+ *          NULL, the database is locked or corrupt, an allocation fails,
+ *          or a filesystem or flush operation fails.
  */
 qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts);
 
@@ -198,6 +200,8 @@ qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts);
  * It is safe to pass NULL; the call is a no-op in that case.
  *
  * @db  Handle returned by qdb_open() or qdb_open_ex().
+ *
+ * @return  Nothing.
  */
 void qdb_close(qdb_t *db);
 
@@ -237,6 +241,8 @@ int qdb_push(qdb_t *db, const char *queue, const void *data, size_t len);
  * qdb_msg_t.
  *
  * @msg  Pointer to the descriptor to release.  Must not be NULL.
+ *
+ * @return  Nothing.
  */
 void qdb_msg_free(qdb_msg_t *msg);
 
@@ -252,9 +258,10 @@ void qdb_msg_free(qdb_msg_t *msg);
  * queue name and message payload.  The caller must release these with
  * qdb_msg_free() when done.
  *
- * Call qdb_ack() with out_msg->id to permanently remove the message.
- * Messages whose leases expire without an acknowledgement are automatically
- * redelivered on the next qdb_pop(), providing at-least-once semantics.
+ * Call qdb_ack() with out_msg->id and out_msg->lease_id to permanently
+ * remove the message.  To make an expired lease available again, call
+ * qdb_process_expired_leases() before the next qdb_pop().  This explicit
+ * expiry processing provides at-least-once delivery semantics.
  *
  * @db       Open database handle.  Must not be NULL.
  * @queue    Name of the source queue.  Must not be NULL or empty.
@@ -266,6 +273,7 @@ void qdb_msg_free(qdb_msg_t *msg);
  *          QDB_ERR_INVAL  if any argument is invalid.
  *          QDB_ERR_IO     on a read or write failure.
  *          QDB_ERR_NOMEM  if a heap allocation fails.
+ *          QDB_ERR_CORRUPT if the in-memory queue state is inconsistent.
  */
 int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg);
 
@@ -355,12 +363,12 @@ int qdb_process_expired_leases(qdb_t *db);
  *
  * All count fields reflect the current in-memory state and are computed
  * without disk I/O.  @file_size_bytes is the only field that queries the
- * OS (one seek/stat call); it is zero if that query fails.
+ * OS (one file-size query); it is zero if that query fails.
  *
- * @queue_count      Number of distinct named queues ever created in this
- *                   session.  Includes queues whose messages have all been
- *                   acknowledged; queue entries are retained for the
- *                   lifetime of the db handle.
+ * @queue_count      Number of distinct named queues in the current state,
+ *                   including queues reconstructed during replay and queues
+ *                   whose messages have all been acknowledged.  Queue
+ *                   entries are retained for the lifetime of the db handle.
  * @pending_count    Messages ready to be popped across all queues.
  * @leased_count     Messages currently held by an active lease (all queues).
  *                   Non-zero after a crash/reopen if leases were active at
@@ -395,7 +403,8 @@ typedef struct {
  * qdb_stats — fill a database-level statistics snapshot.
  *
  * Aggregates counts across all queues.  Does not write to disk.  Performs
- * one OS call to obtain @file_size_bytes; all other fields are in-memory.
+ * one OS file-size query for @file_size_bytes; all other fields are
+ * in-memory.
  *
  * @db   Open database handle.  Must not be NULL.
  * @out  Output parameter to fill.  Must not be NULL.
