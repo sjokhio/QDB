@@ -2,7 +2,7 @@
  * test_mp.c - minimal multi-process test foundation
  *
  * The executable runs as an orchestrator by default and can also run worker
- * modes selected through argv. Crash tests are added in later stages.
+ * modes selected through argv. Includes one deterministic crash-recovery test.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -25,6 +25,7 @@
 #include "test_platform.h"
 
 #if !defined(_WIN32)
+#  include <signal.h>
 #  include <spawn.h>
 #  include <sys/wait.h>
 #  include <time.h>
@@ -163,6 +164,59 @@ static int run_pop_ack_worker(const char *path, unsigned int count)
     return EXIT_SUCCESS;
 }
 
+static int run_verify_empty_worker(const char *path)
+{
+    qdb_t *db = qdb_open(path);
+    qdb_msg_t msg = {0};
+    int pop_rc;
+
+    if (!db) {
+        return EXIT_FAILURE;
+    }
+    pop_rc = qdb_pop(db, "handoff", &msg);
+    if (pop_rc == QDB_OK) {
+        qdb_msg_free(&msg);
+    }
+    qdb_close(db);
+    return (pop_rc == QDB_ERR_EMPTY) ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static int run_create_empty_worker(const char *path)
+{
+    qdb_t *db = qdb_open(path);
+
+    if (!db) {
+        return EXIT_FAILURE;
+    }
+    qdb_close(db);
+    return EXIT_SUCCESS;
+}
+
+static int run_push_hold_worker(const char *path, unsigned int count,
+                                const char *ready_path,
+                                const char *release_path)
+{
+    static const char payload[] = "message";
+    qdb_t *db = qdb_open(path);
+    unsigned int i;
+
+    if (!db) {
+        return EXIT_FAILURE;
+    }
+    for (i = 0; i < count; ++i) {
+        if (qdb_push(db, "crash", payload, sizeof(payload) - 1u) != QDB_OK) {
+            return EXIT_FAILURE;
+        }
+    }
+    if (signal_file(ready_path) != 0) {
+        return EXIT_FAILURE;
+    }
+    while (!signal_exists(release_path)) {
+        sleep_milliseconds(10u);
+    }
+    return EXIT_FAILURE;
+}
+
 static unsigned long current_process_id(void)
 {
 #if defined(_WIN32)
@@ -182,6 +236,7 @@ struct worker_process {
 
 static int start_worker(const char *executable, const char *mode,
                         const char *path, const char *arg1, const char *arg2,
+                        const char *arg3,
                         struct worker_process *worker)
 {
 #if defined(_WIN32)
@@ -190,14 +245,22 @@ static int start_worker(const char *executable, const char *mode,
     int written;
     BOOL created;
 
-    if (arg2) {
+    if (arg3) {
+        written = snprintf(command, sizeof(command),
+                           "\"%s\" %s \"%s\" \"%s\" \"%s\" \"%s\"",
+                           executable, mode, path, arg1, arg2, arg3);
+    } else if (arg2) {
         written = snprintf(command, sizeof(command),
                            "\"%s\" %s \"%s\" \"%s\" \"%s\"",
                            executable, mode, path, arg1, arg2);
-    } else {
+    } else if (arg1) {
         written = snprintf(command, sizeof(command),
                            "\"%s\" %s \"%s\" \"%s\"",
                            executable, mode, path, arg1);
+    } else {
+        written = snprintf(command, sizeof(command),
+                           "\"%s\" %s \"%s\"",
+                           executable, mode, path);
     }
     if (written < 0 || (size_t)written >= sizeof(command)) {
         return -1;
@@ -215,14 +278,15 @@ static int start_worker(const char *executable, const char *mode,
     return 0;
 #else
     int rc;
-    char *worker_argv[6];
+    char *worker_argv[7];
 
     worker_argv[0] = (char *)executable;
     worker_argv[1] = (char *)mode;
     worker_argv[2] = (char *)path;
-    worker_argv[3] = (char *)arg1;
+    worker_argv[3] = (char *)arg1;  /* NULL terminates argv when absent */
     worker_argv[4] = (char *)arg2;
-    worker_argv[5] = NULL;
+    worker_argv[5] = (char *)arg3;
+    worker_argv[6] = NULL;
 
     rc = posix_spawnp(&worker->pid, executable, NULL, NULL,
                       worker_argv, environ);
@@ -241,7 +305,23 @@ static int start_count_worker(const char *executable, const char *mode,
     if (written < 0 || (size_t)written >= sizeof(count_text)) {
         return -1;
     }
-    return start_worker(executable, mode, path, count_text, NULL, worker);
+    return start_worker(executable, mode, path, count_text, NULL, NULL, worker);
+}
+
+static int start_push_hold_worker(const char *executable, const char *path,
+                                  unsigned int count, const char *ready_path,
+                                  const char *release_path,
+                                  struct worker_process *worker)
+{
+    char count_text[32];
+    int written;
+
+    written = snprintf(count_text, sizeof(count_text), "%u", count);
+    if (written < 0 || (size_t)written >= sizeof(count_text)) {
+        return -1;
+    }
+    return start_worker(executable, "--worker=push-hold", path, count_text,
+                        ready_path, release_path, worker);
 }
 
 static int wait_for_worker(struct worker_process *worker)
@@ -275,6 +355,35 @@ static int wait_for_worker(struct worker_process *worker)
 #endif
 }
 
+static int terminate_worker(struct worker_process *worker)
+{
+#if defined(_WIN32)
+    return TerminateProcess(worker->process.hProcess, 1u) ? 0 : -1;
+#else
+    return (kill(worker->pid, SIGKILL) == 0) ? 0 : -1;
+#endif
+}
+
+static int reap_worker(struct worker_process *worker)
+{
+#if defined(_WIN32)
+    int rc = (WaitForSingleObject(worker->process.hProcess, INFINITE) ==
+              WAIT_OBJECT_0) ? 0 : -1;
+
+    (void)CloseHandle(worker->process.hThread);
+    (void)CloseHandle(worker->process.hProcess);
+    return rc;
+#else
+    int status;
+    int rc;
+
+    do {
+        rc = waitpid(worker->pid, &status, 0);
+    } while (rc < 0 && errno == EINTR);
+    return (rc >= 0) ? 0 : -1;
+#endif
+}
+
 static int run_orchestrator(const char *executable)
 {
     char db_path[256];
@@ -285,6 +394,8 @@ static int run_orchestrator(const char *executable)
     int written;
     int rc;
     int failed = 0;
+    int empty_handoff_failed = 0;
+    int crash_failed = 0;
     int handoff_failed = 0;
 
     written = snprintf(db_path, sizeof(db_path), "test_mp_%lu.qdb",
@@ -307,7 +418,7 @@ static int run_orchestrator(const char *executable)
     qdb_test_cleanup_files(db_path);
     cleanup_signals(ready_path, release_path);
     rc = start_worker(executable, "--worker=open-hold", db_path, ready_path,
-                      release_path, &worker);
+                      release_path, NULL, &worker);
     if (rc == 0) {
         int ready_rc = wait_for_signal(ready_path);
         int release_rc = signal_file(release_path);
@@ -329,7 +440,7 @@ static int run_orchestrator(const char *executable)
     qdb_test_cleanup_files(db_path);
     cleanup_signals(ready_path, release_path);
     rc = start_worker(executable, "--worker=open-hold", db_path, ready_path,
-                      release_path, &worker);
+                      release_path, NULL, &worker);
     if (rc != 0) {
         fputs("failed to start lock-hold worker\n", stderr);
         qdb_test_cleanup_files(db_path);
@@ -372,6 +483,93 @@ static int run_orchestrator(const char *executable)
 
     printf("  concurrent open rejected; reopen after hand-off succeeds   %s\n",
            failed ? "FAILED" : "ok");
+
+    qdb_test_cleanup_files(db_path);
+    rc = start_worker(executable, "--worker=create-empty", db_path, NULL,
+                      NULL, NULL, &worker);
+    if (rc == 0) {
+        rc = wait_for_worker(&worker);
+    }
+    if (rc != 0) {
+        empty_handoff_failed = 1;
+    } else {
+        rc = start_worker(executable, "--worker=verify-empty", db_path, NULL,
+                          NULL, NULL, &worker);
+        if (rc == 0) {
+            rc = wait_for_worker(&worker);
+        }
+        if (rc != 0) {
+            empty_handoff_failed = 1;
+        }
+    }
+    qdb_test_cleanup_files(db_path);
+
+    printf("  empty database process hand-off                            %s\n",
+           empty_handoff_failed ? "FAILED" : "ok");
+
+    qdb_test_cleanup_files(db_path);
+    cleanup_signals(ready_path, release_path);
+    rc = start_push_hold_worker(executable, db_path, 10u, ready_path,
+                                release_path, &worker);
+    if (rc != 0) {
+        crash_failed = 1;
+    } else if (wait_for_signal(ready_path) != 0) {
+        crash_failed = 1;
+        (void)signal_file(release_path);
+        (void)reap_worker(&worker);
+    } else {
+        if (terminate_worker(&worker) != 0) {
+            crash_failed = 1;
+            (void)signal_file(release_path);
+        }
+        if (reap_worker(&worker) != 0) {
+            crash_failed = 1;
+        }
+    }
+
+    if (!crash_failed) {
+        qdb_queue_stats_t stats;
+        unsigned int i;
+
+        db = qdb_open(db_path);
+        if (db == NULL || qdb_queue_stats(db, "crash", &stats) != QDB_OK ||
+            stats.pending_count != 10u) {
+            crash_failed = 1;
+        }
+
+        for (i = 0; db != NULL && !crash_failed && i < 10u; ++i) {
+            qdb_msg_t msg = {0};
+
+            if (qdb_pop(db, "crash", &msg) != QDB_OK) {
+                crash_failed = 1;
+            } else {
+                if (qdb_ack(db, msg.id, msg.lease_id) != QDB_OK) {
+                    crash_failed = 1;
+                }
+                qdb_msg_free(&msg);
+            }
+        }
+
+        if (db != NULL && !crash_failed) {
+            qdb_msg_t msg = {0};
+            int pop_rc = qdb_pop(db, "crash", &msg);
+
+            if (pop_rc != QDB_ERR_EMPTY) {
+                crash_failed = 1;
+            }
+            if (pop_rc == QDB_OK) {
+                qdb_msg_free(&msg);
+            }
+        }
+        if (db != NULL) {
+            qdb_close(db);
+        }
+    }
+    qdb_test_cleanup_files(db_path);
+    cleanup_signals(ready_path, release_path);
+
+    printf("  pushed messages survive worker termination                 %s\n",
+           crash_failed ? "FAILED" : "ok");
 
     qdb_test_cleanup_files(db_path);
     rc = start_count_worker(executable, "--worker=push-n", db_path, 10u,
@@ -418,7 +616,57 @@ static int run_orchestrator(const char *executable)
 
     printf("  push process to pop/ack process hand-off                  %s\n",
            handoff_failed ? "FAILED" : "ok");
-    return (failed || handoff_failed) ? EXIT_FAILURE : EXIT_SUCCESS;
+
+    /* Test: three-process sequential hand-off (A→B→C).
+     *   A: push 10 messages
+     *   B: pop and ack all 10
+     *   C: open database, verify queue is empty */
+    {
+        int three_failed = 0;
+
+        qdb_test_cleanup_files(db_path);
+        rc = start_count_worker(executable, "--worker=push-n", db_path, 10u,
+                                &worker);
+        if (rc == 0) {
+            rc = wait_for_worker(&worker);
+        }
+        if (rc != 0) {
+            fputs("three-process A (push) failed\n", stderr);
+            qdb_test_cleanup_files(db_path);
+            return EXIT_FAILURE;
+        }
+
+        rc = start_count_worker(executable, "--worker=pop-ack-n", db_path, 10u,
+                                &worker);
+        if (rc == 0) {
+            rc = wait_for_worker(&worker);
+        }
+        if (rc != 0) {
+            fputs("three-process B (pop/ack) failed\n", stderr);
+            qdb_test_cleanup_files(db_path);
+            return EXIT_FAILURE;
+        }
+
+        rc = start_worker(executable, "--worker=verify-empty", db_path, NULL,
+                          NULL, NULL, &worker);
+        if (rc == 0) {
+            rc = wait_for_worker(&worker);
+        }
+        if (rc != 0) {
+            three_failed = 1;
+        }
+
+        qdb_test_cleanup_files(db_path);
+        printf("  three-process A→B→C hand-off (C verifies empty)           %s\n",
+               three_failed ? "FAILED" : "ok");
+
+        if (failed || empty_handoff_failed || crash_failed || handoff_failed ||
+            three_failed) {
+            return EXIT_FAILURE;
+        }
+    }
+
+    return EXIT_SUCCESS;
 }
 
 int main(int argc, char **argv)
@@ -439,6 +687,18 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
         return run_pop_ack_worker(argv[2], count);
+    }
+    if (argc == 3 && strcmp(argv[1], "--worker=verify-empty") == 0) {
+        return run_verify_empty_worker(argv[2]);
+    }
+    if (argc == 3 && strcmp(argv[1], "--worker=create-empty") == 0) {
+        return run_create_empty_worker(argv[2]);
+    }
+    if (argc == 6 && strcmp(argv[1], "--worker=push-hold") == 0) {
+        if (parse_count(argv[3], &count) != 0) {
+            return EXIT_FAILURE;
+        }
+        return run_push_hold_worker(argv[2], count, argv[4], argv[5]);
     }
     if (argc != 1) {
         fprintf(stderr,
