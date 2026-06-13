@@ -212,3 +212,28 @@ target_link_options(test_stats PRIVATE
 add_test(NAME stats COMMAND test_stats
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# qdb_open_ex() / configurable lease timeout tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_open_ex test_open_ex.c)
+
+target_include_directories(test_open_ex PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_open_ex PRIVATE qdb::qdb)
+
+target_compile_options(test_open_ex PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_open_ex PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME open_ex COMMAND test_open_ex
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)

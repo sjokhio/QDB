@@ -113,6 +113,37 @@ typedef struct {
  * ---------------------------------------------------------------------- */
 
 /**
+ * Default lease duration used by qdb_open() and qdb_open_ex() when
+ * qdb_open_opts_t.lease_timeout_s is zero: 30 seconds.
+ */
+#define QDB_DEFAULT_LEASE_TIMEOUT_S  30u
+
+/**
+ * qdb_open_opts_t — optional parameters for qdb_open_ex().
+ *
+ * Always zero-initialise this struct before setting any fields:
+ *
+ *     qdb_open_opts_t opts = {0};
+ *     opts.lease_timeout_s = 120;
+ *
+ * Any field left at zero uses the library default.  Future versions may
+ * add new fields; zero-initialising guarantees those fields also default
+ * correctly, maintaining forward source compatibility.
+ *
+ * @lease_timeout_s  Lease duration in seconds.  A message that has been
+ *                   popped but not acked or nacked within this window will
+ *                   be returned to PENDING state by the next call to
+ *                   qdb_process_expired_leases().
+ *
+ *                   0  →  use QDB_DEFAULT_LEASE_TIMEOUT_S (30 s).
+ *                   Any non-zero uint32_t value is accepted; the library
+ *                   imposes no upper limit.
+ */
+typedef struct {
+    uint32_t lease_timeout_s;
+} qdb_open_opts_t;
+
+/**
  * qdb_open — open (or create) a queue database.
  *
  * Opens the database file at @path.  If the file does not exist it is
@@ -121,6 +152,9 @@ typedef struct {
  *
  * Recovery: if a previous run crashed without flushing the write-ahead
  * log, qdb_open() performs crash recovery automatically before returning.
+ *
+ * Equivalent to qdb_open_ex(@path, NULL).  The lease timeout is
+ * QDB_DEFAULT_LEASE_TIMEOUT_S (30 seconds).
  *
  * @path   Filesystem path to the database file.  Must not be NULL.
  *
@@ -133,6 +167,28 @@ typedef struct {
 qdb_t *qdb_open(const char *path);
 
 /**
+ * qdb_open_ex — open (or create) a queue database with options.
+ *
+ * Identical to qdb_open() when @opts is NULL or zero-initialised.
+ * Use this function to configure the lease timeout or future open-time
+ * options.
+ *
+ * @path  Filesystem path to the database file.  Must not be NULL.
+ * @opts  Optional configuration.  NULL means "use all defaults."
+ *        Must be zero-initialised before any fields are set so that any
+ *        future fields added to qdb_open_opts_t default correctly.
+ *
+ * @return  Pointer to a new qdb_t handle on success.
+ *          NULL on failure:
+ *            @path is NULL;
+ *            QDB_ERR_IO      — filesystem or flush failure;
+ *            QDB_ERR_CORRUPT — unrecognised or corrupt database file;
+ *            QDB_ERR_NOMEM   — memory allocation failure;
+ *            QDB_ERR_LOCKED  — database locked by another process.
+ */
+qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts);
+
+/**
  * qdb_close — flush and close a queue database.
  *
  * Flushes all pending writes, releases the file lock, and frees all
@@ -141,7 +197,7 @@ qdb_t *qdb_open(const char *path);
  *
  * It is safe to pass NULL; the call is a no-op in that case.
  *
- * @db  Handle returned by qdb_open().
+ * @db  Handle returned by qdb_open() or qdb_open_ex().
  */
 void qdb_close(qdb_t *db);
 
@@ -269,6 +325,10 @@ int qdb_nack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
  * durable RT_MSG_EXPIRE record and returns the message to the tail of its
  * source queue as a PENDING message.  The message's retry_count is
  * incremented.
+ *
+ * The lease window is set once at open time via qdb_open_ex() (field
+ * qdb_open_opts_t.lease_timeout_s).  qdb_open() uses the default of
+ * QDB_DEFAULT_LEASE_TIMEOUT_S seconds.
  *
  * QDB has no background thread.  The application must call this function
  * explicitly — before each qdb_pop(), or on a periodic timer — to ensure

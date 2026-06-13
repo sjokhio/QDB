@@ -206,10 +206,10 @@ static int validate_log(qdb_t *db)
 }
 
 /* -------------------------------------------------------------------------
- * qdb_open
+ * qdb_open / qdb_open_ex
  * ---------------------------------------------------------------------- */
 
-qdb_t *qdb_open(const char *path)
+qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
 {
     qdb_t  *db;
     size_t  path_len;
@@ -226,6 +226,11 @@ qdb_t *qdb_open(const char *path)
     }
     db->fd      = QDB__INVALID_FD;
     db->lock_fd = QDB__INVALID_FD;
+
+    /* Apply lease timeout from opts; 0 or absent → library default. */
+    db->lease_timeout_us = (opts && opts->lease_timeout_s != 0u)
+                           ? (uint64_t)opts->lease_timeout_s * UINT64_C(1000000)
+                           : QDB_DEFAULT_LEASE_US;
 
     path_len      = strlen(path);
     db->path      = make_sidecar(path, path_len, "");
@@ -328,6 +333,11 @@ qdb_t *qdb_open(const char *path)
     }
 
     return db;
+}
+
+qdb_t *qdb_open(const char *path)
+{
+    return qdb_open_ex(path, NULL);
 }
 
 /* -------------------------------------------------------------------------
@@ -516,7 +526,7 @@ int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
 
     /* --- assign lease and build payload --- */
     lease_id  = db->next_lease_id;
-    expiry_us = qdb__time_us() + QDB_DEFAULT_LEASE_US;
+    expiry_us = qdb__time_us() + db->lease_timeout_us;
 
     qdb__put_u64le(lease_buf + QDB_LEASE_OFF_MSG_ID,   m->id);
     qdb__put_u64le(lease_buf + QDB_LEASE_OFF_EXPIRY,   expiry_us);

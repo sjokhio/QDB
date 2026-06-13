@@ -151,6 +151,9 @@ struct qdb {
     uint64_t    create_time_us;
     uint32_t    flags;
 
+    /* Configuration set at open time */
+    uint64_t    lease_timeout_us; /* duration applied to each new qdb_pop() lease */
+
     /* In-memory queue state; NULL until qdb__replay_log() completes */
     struct qdb__state *state;
 };
