@@ -280,6 +280,35 @@ static int run_pop_ack_hold_worker(const char *path, const char *ready_path,
     return EXIT_FAILURE;
 }
 
+static int run_pop_nack_hold_worker(const char *path, const char *ready_path,
+                                    const char *release_path)
+{
+    qdb_t *db = qdb_open(path);
+    qdb_msg_t msg = {0};
+
+    if (!db) {
+        return EXIT_FAILURE;
+    }
+    if (qdb_pop(db, "handoff", &msg) != QDB_OK) {
+        qdb_close(db);
+        return EXIT_FAILURE;
+    }
+    if (qdb_nack(db, msg.id, msg.lease_id) != QDB_OK) {
+        qdb_msg_free(&msg);
+        qdb_close(db);
+        return EXIT_FAILURE;
+    }
+    qdb_msg_free(&msg);
+    if (signal_file(ready_path) != 0) {
+        qdb_close(db);
+        return EXIT_FAILURE;
+    }
+    while (!signal_exists(release_path)) {
+        sleep_milliseconds(10u);
+    }
+    return EXIT_FAILURE;
+}
+
 static unsigned long current_process_id(void)
 {
 #if defined(_WIN32)
@@ -657,6 +686,53 @@ static int test_ack_crash_recovery(const char *executable,
     return failed;
 }
 
+static int test_nack_crash_recovery(const char *executable,
+                                    const char *db_path,
+                                    const char *ready_path,
+                                    const char *release_path)
+{
+    struct worker_process worker;
+    qdb_t *db;
+    int failed = 0;
+    int rc;
+
+    cleanup_test_files(db_path, ready_path, release_path);
+    rc = run_count_worker(executable, "--worker=push-n", db_path, 1u, &worker);
+    if (rc != 0) {
+        cleanup_test_files(db_path, ready_path, release_path);
+        return 1;
+    }
+
+    rc = start_worker(executable, "--worker=pop-nack-hold", db_path,
+                      ready_path, release_path, NULL, &worker);
+    if (rc != 0 || terminate_ready_worker(&worker, ready_path,
+                                          release_path) != 0) {
+        cleanup_test_files(db_path, ready_path, release_path);
+        return 1;
+    }
+
+    db = qdb_open(db_path);
+    if (db == NULL) {
+        failed = 1;
+    } else {
+        qdb_msg_t msg = {0};
+
+        if (qdb_pop(db, "handoff", &msg) != QDB_OK || msg.lease_id == 0u ||
+            qdb_ack(db, msg.id, msg.lease_id) != QDB_OK) {
+            failed = 1;
+        }
+        qdb_msg_free(&msg);
+
+        if (!failed && qdb_pop(db, "handoff", &msg) != QDB_ERR_EMPTY) {
+            failed = 1;
+        }
+        qdb_close(db);
+    }
+
+    cleanup_test_files(db_path, ready_path, release_path);
+    return failed;
+}
+
 static int test_empty_handoff(const char *executable, const char *db_path)
 {
     struct worker_process worker;
@@ -762,6 +838,7 @@ static int run_orchestrator(const char *executable)
     int crash_failed = 0;
     int lease_crash_failed = 0;
     int ack_crash_failed = 0;
+    int nack_crash_failed = 0;
     int handoff_failed = 0;
     int three_failed = 0;
 
@@ -868,6 +945,12 @@ static int run_orchestrator(const char *executable)
     printf("  acked message absent after worker termination              %s\n",
            ack_crash_failed ? "FAILED" : "ok");
 
+    nack_crash_failed = test_nack_crash_recovery(
+        executable, db_path, ready_path, release_path);
+
+    printf("  nacked message redelivered after worker termination        %s\n",
+           nack_crash_failed ? "FAILED" : "ok");
+
     handoff_failed = test_sequential_handoff(executable, db_path);
     if (handoff_failed < 0) {
         return EXIT_FAILURE;
@@ -885,8 +968,8 @@ static int run_orchestrator(const char *executable)
            three_failed ? "FAILED" : "ok");
 
     if (failed || empty_handoff_failed || crash_failed ||
-        lease_crash_failed || ack_crash_failed || handoff_failed ||
-        three_failed) {
+        lease_crash_failed || ack_crash_failed || nack_crash_failed ||
+        handoff_failed || three_failed) {
         return EXIT_FAILURE;
     }
 
@@ -929,6 +1012,9 @@ int main(int argc, char **argv)
     }
     if (argc == 5 && strcmp(argv[1], "--worker=pop-ack-hold") == 0) {
         return run_pop_ack_hold_worker(argv[2], argv[3], argv[4]);
+    }
+    if (argc == 5 && strcmp(argv[1], "--worker=pop-nack-hold") == 0) {
+        return run_pop_nack_hold_worker(argv[2], argv[3], argv[4]);
     }
     if (argc != 1) {
         fprintf(stderr,
