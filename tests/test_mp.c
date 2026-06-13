@@ -217,6 +217,31 @@ static int run_push_hold_worker(const char *path, unsigned int count,
     return EXIT_FAILURE;
 }
 
+static int run_pop_hold_worker(const char *path, const char *ready_path,
+                               const char *release_path)
+{
+    qdb_open_opts_t opts = {0};
+    qdb_msg_t msg = {0};
+    qdb_t *db;
+
+    opts.lease_timeout_s = 1u;
+    db = qdb_open_ex(path, &opts);
+    if (!db) {
+        return EXIT_FAILURE;
+    }
+    if (qdb_pop(db, "handoff", &msg) != QDB_OK) {
+        return EXIT_FAILURE;
+    }
+    qdb_msg_free(&msg);
+    if (signal_file(ready_path) != 0) {
+        return EXIT_FAILURE;
+    }
+    while (!signal_exists(release_path)) {
+        sleep_milliseconds(10u);
+    }
+    return EXIT_FAILURE;
+}
+
 static unsigned long current_process_id(void)
 {
 #if defined(_WIN32)
@@ -396,6 +421,7 @@ static int run_orchestrator(const char *executable)
     int failed = 0;
     int empty_handoff_failed = 0;
     int crash_failed = 0;
+    int lease_crash_failed = 0;
     int handoff_failed = 0;
 
     written = snprintf(db_path, sizeof(db_path), "test_mp_%lu.qdb",
@@ -572,6 +598,75 @@ static int run_orchestrator(const char *executable)
            crash_failed ? "FAILED" : "ok");
 
     qdb_test_cleanup_files(db_path);
+    cleanup_signals(ready_path, release_path);
+    rc = start_count_worker(executable, "--worker=push-n", db_path, 1u,
+                            &worker);
+    if (rc == 0) {
+        rc = wait_for_worker(&worker);
+    }
+    if (rc != 0) {
+        lease_crash_failed = 1;
+    } else {
+        rc = start_worker(executable, "--worker=pop-hold", db_path,
+                          ready_path, release_path, NULL, &worker);
+        if (rc != 0) {
+            lease_crash_failed = 1;
+        } else if (wait_for_signal(ready_path) != 0) {
+            lease_crash_failed = 1;
+            (void)signal_file(release_path);
+            (void)reap_worker(&worker);
+        } else {
+            if (terminate_worker(&worker) != 0) {
+                lease_crash_failed = 1;
+                (void)signal_file(release_path);
+            }
+            if (reap_worker(&worker) != 0) {
+                lease_crash_failed = 1;
+            }
+        }
+    }
+
+    if (!lease_crash_failed) {
+        qdb_queue_stats_t stats;
+
+        db = qdb_open(db_path);
+        if (db == NULL || qdb_queue_stats(db, "handoff", &stats) != QDB_OK ||
+            stats.leased_count != 1u || stats.pending_count != 0u) {
+            lease_crash_failed = 1;
+        }
+
+        sleep_milliseconds(1100u);
+        if (db == NULL || qdb_process_expired_leases(db) != 1 ||
+            qdb_queue_stats(db, "handoff", &stats) != QDB_OK ||
+            stats.leased_count != 0u || stats.pending_count != 1u) {
+            lease_crash_failed = 1;
+        }
+
+        if (db != NULL && !lease_crash_failed) {
+            qdb_msg_t msg = {0};
+
+            if (qdb_pop(db, "handoff", &msg) != QDB_OK ||
+                qdb_ack(db, msg.id, msg.lease_id) != QDB_OK) {
+                lease_crash_failed = 1;
+            }
+            qdb_msg_free(&msg);
+
+            if (!lease_crash_failed &&
+                qdb_pop(db, "handoff", &msg) != QDB_ERR_EMPTY) {
+                lease_crash_failed = 1;
+            }
+        }
+        if (db != NULL) {
+            qdb_close(db);
+        }
+    }
+    qdb_test_cleanup_files(db_path);
+    cleanup_signals(ready_path, release_path);
+
+    printf("  leased message survives worker termination                 %s\n",
+           lease_crash_failed ? "FAILED" : "ok");
+
+    qdb_test_cleanup_files(db_path);
     rc = start_count_worker(executable, "--worker=push-n", db_path, 10u,
                             &worker);
     if (rc == 0) {
@@ -660,8 +755,8 @@ static int run_orchestrator(const char *executable)
         printf("  three-process A→B→C hand-off (C verifies empty)           %s\n",
                three_failed ? "FAILED" : "ok");
 
-        if (failed || empty_handoff_failed || crash_failed || handoff_failed ||
-            three_failed) {
+        if (failed || empty_handoff_failed || crash_failed ||
+            lease_crash_failed || handoff_failed || three_failed) {
             return EXIT_FAILURE;
         }
     }
@@ -699,6 +794,9 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
         return run_push_hold_worker(argv[2], count, argv[4], argv[5]);
+    }
+    if (argc == 5 && strcmp(argv[1], "--worker=pop-hold") == 0) {
+        return run_pop_hold_worker(argv[2], argv[3], argv[4]);
     }
     if (argc != 1) {
         fprintf(stderr,
