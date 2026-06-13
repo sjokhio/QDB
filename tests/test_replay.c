@@ -733,6 +733,52 @@ static void test_next_msg_id_persisted(void)
     cleanup(path);
 }
 
+static void test_next_lease_id_after_push_only_session(void)
+{
+    const char *path = "rp_lease_seed.qdb";
+    test_begin("next_lease_id seeded >=1 after push-only session");
+    cleanup(path);
+    /* Session 1: push-only — no LEASE records written to log. */
+    {
+        qdb_t *db = qdb_open(path);
+        ASSERT_NOTNULL(db);
+        if (db) {
+            ASSERT_EQ(qdb_push(db, "q", "hello", 5), QDB_OK);
+            ASSERT_EQ(qdb_push(db, "q", "world", 5), QDB_OK);
+            qdb_close(db);
+        }
+    }
+    /* Session 2: pop and ack — next_lease_id must not be 0. */
+    {
+        qdb_t *db = qdb_open(path);
+        ASSERT_NOTNULL(db);
+        if (db) {
+            qdb_msg_t msg = {0};
+            ASSERT_EQ(qdb_pop(db, "q", &msg), QDB_OK);
+            ASSERT(msg.lease_id >= 1u);
+            ASSERT_EQ(qdb_ack(db, msg.id, msg.lease_id), QDB_OK);
+            qdb_msg_free(&msg);
+            qdb_close(db);
+        }
+    }
+    /* Session 3: must open successfully — replay must not see lease_id 0. */
+    {
+        qdb_t *db = qdb_open(path);
+        ASSERT_NOTNULL(db);
+        if (db) {
+            qdb_msg_t msg = {0};
+            ASSERT_EQ(qdb_pop(db, "q", &msg), QDB_OK);
+            ASSERT(msg.lease_id >= 1u);
+            ASSERT_EQ(qdb_ack(db, msg.id, msg.lease_id), QDB_OK);
+            qdb_msg_free(&msg);
+            ASSERT_EQ(qdb_pop(db, "q", &msg), QDB_ERR_EMPTY);
+            qdb_close(db);
+        }
+    }
+    test_end();
+    cleanup(path);
+}
+
 static void test_mixed_sequence(void)
 {
     const char *path = "rp_mixed.qdb";
@@ -815,6 +861,7 @@ int main(void)
     test_ack_wrong_lease();
     test_lease_non_pending_message();
     test_next_msg_id_persisted();
+    test_next_lease_id_after_push_only_session();
     test_mixed_sequence();
 
     printf("================\n");

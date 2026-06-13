@@ -289,6 +289,12 @@ qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
         return NULL;
     }
 
+    /* next_lease_id is not stored in the header.  Seed at 1 (the same value
+     * a new database starts with) so that a push-only database never issues
+     * lease ID 0.  qdb__replay_log() advances this past any LEASE or
+     * CHECKPOINT records found in the log. */
+    db->next_lease_id = 1u;
+
     /* 4. Replay WAL if present or if dirty flag is set. */
     if ((db->flags & QDB_FLAG_WAL_PRESENT) ||
         (db->flags & QDB_FLAG_DIRTY)) {
