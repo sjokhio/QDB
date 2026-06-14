@@ -311,7 +311,7 @@ typedef struct {
     uint64_t leased_count;   /* messages in LEASED state across all queues  */
     uint64_t acked_count;    /* messages ACKed since last compaction         */
     uint32_t queue_count;    /* number of distinct queues                    */
-    uint64_t file_size;      /* current log file size in bytes               */
+    uint64_t file_size_bytes; /* current log file size in bytes              */
 } qdb_stats_t;
 ```
 

@@ -20,25 +20,15 @@ Just link a library and start queuing jobs.
 ---
 
 > [!WARNING]
-> **Experimental software.** QDB is in early development. The file format
-> and public API may change before v1.0.0. Do not use in production without
-> extensive testing and a clear understanding of
-> [current limitations](docs/mvp-status.md).
-
----
-
-## Architecture
-
-QDB uses a durable append-only log stored in a single queue file. On startup,
-the log is replayed to rebuild queue state and recover from crashes.
-
-See [Architecture](docs/architecture.md).
+> **Pre-release software.** QDB is approaching v1.0.0 but has not yet
+> reached it. The file format and public API are stable but not yet
+> frozen. Do not use in production without extensive testing and a clear
+> understanding of [current limitations](docs/mvp-status.md).
 
 ---
 
 ## Contents
 
-- [Architecture](#architecture)
 - [30-second quickstart](#30-second-quickstart)
 - [Why QDB?](#why-qdb)
 - [When to use QDB](#when-to-use-qdb)
@@ -47,7 +37,7 @@ See [Architecture](docs/architecture.md).
 - [Building](#building)
 - [API overview](#api-overview)
 - [Design philosophy](#design-philosophy)
-- [Status and roadmap](#status-and-roadmap)
+- [Status](#status)
 - [Contributing](#contributing)
 
 ---
@@ -96,7 +86,11 @@ int main(void)
 cc -o worker worker.c -lqdb
 ```
 
-Full working example: [`examples/job_worker.c`](examples/job_worker.c)  
+Full working examples:
+
+- [`examples/hello.c`](examples/hello.c) — minimal push/pop/ack/stats in ~90 lines
+- [`examples/job_worker.c`](examples/job_worker.c) — worker loop with NACK and retry simulation
+
 Complete API reference: [`docs/api.md`](docs/api.md)
 
 ---
@@ -109,6 +103,8 @@ Complete API reference: [`docs/api.md`](docs/api.md)
 | **Durable** | Every `qdb_push` and `qdb_ack` is fsynced to disk before returning `QDB_OK`. An immediate `kill -9` will not lose committed messages. |
 | **Crash recovery** | On `qdb_open`, QDB replays the append-only log and fully reconstructs queue state, requiring no manual repair step. |
 | **At-least-once delivery** | Messages are exclusively leased on pop. If your process crashes before acking, the lease expires and the message is automatically redelivered. |
+| **Compaction** | `qdb_compact()` rewrites the log to contain only live messages. Crash-safe: a crash before the atomic rename leaves the original intact. |
+| **Observable** | `qdb_stats()` and `qdb_queue_stats()` return pending/leased/acked counts without disk I/O. |
 | **Small footprint** | Under 5 000 lines of C17. Zero dependencies beyond libc. The entire implementation is auditable in a day. |
 | **Cross-platform** | Linux, macOS, and Windows via thin platform shims over POSIX and Win32 file APIs. |
 
@@ -155,7 +151,7 @@ Throughput is bounded entirely by hardware-flush latency (~3.9 ms per
 across all message counts tested (N = 100 to 1 000).
 
 **Linux numbers will be significantly higher.** On NVMe with `fdatasync`
-(typical default, write cache enabled) expect 700-6 000 msg/s for push.
+(typical default, write cache enabled) expect 700–6 000 msg/s for push.
 
 > Full methodology, platform comparison table, and per-fsync latency
 > derivation: [`docs/benchmarks.md`](docs/benchmarks.md)
@@ -170,7 +166,7 @@ reduce the number of storage flushes required per operation.
 ### Requirements
 
 - CMake 3.20 or later
-- A C17-capable compiler: GCC 8+, Clang 7+, or MSVC 2019+
+- A C17-capable compiler (see [Platform support](#platform-support) for tested versions)
 
 ### From source
 
@@ -178,8 +174,16 @@ reduce the number of storage flushes required per operation.
 git clone https://github.com/sjokhio/qdb.git
 cd qdb
 cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build          # 1 286+ assertions across 8 suites
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure   # 14 suites
+```
+
+To run with sanitizers (Linux / macOS, Clang or GCC):
+
+```sh
+cmake -B build-san -DCMAKE_BUILD_TYPE=Debug -DQDB_SANITIZERS=ON
+cmake --build build-san --parallel
+ctest --test-dir build-san --output-on-failure
 ```
 
 ### CMake options
@@ -209,11 +213,23 @@ target_link_libraries(my_app PRIVATE qdb::qdb)
 
 ### Platform support
 
-| Platform | Status | fsync primitive |
-|---|---|---|
-| Linux (GCC / Clang) | Tested | `fdatasync` |
-| macOS (Apple clang) | Tested | `F_FULLFSYNC` |
-| Windows (MSVC / clang-cl) | Tested in CI | `FlushFileBuffers` |
+Compilers and OS versions tested in CI on every push:
+
+| Platform | OS | Compiler | Build types | fsync primitive |
+|---|---|---|---|---|
+| Linux | Ubuntu 22.04 | GCC 12 | Debug, Release, ASan+UBSan | `fdatasync` |
+| Linux | Ubuntu 22.04 | Clang 15, 16, 17 | Debug, Release, ASan+UBSan | `fdatasync` |
+| macOS | macOS 14 (M-series) | Apple Clang (Xcode) | Debug, Release, ASan+UBSan | `F_FULLFSYNC` |
+| macOS | macOS 14 (M-series) | Homebrew LLVM | Debug, Release | `F_FULLFSYNC` |
+| Windows | Windows Server 2022 | MSVC (x64) | Debug, Release | `FlushFileBuffers` |
+| Windows | Windows Server 2022 | MSVC (Win32) | Debug, Release | `FlushFileBuffers` |
+| Windows | Windows Server 2022 | clang-cl | Debug, Release | `FlushFileBuffers` |
+
+All configurations run with warnings-as-errors. Linux and macOS debug builds
+additionally run the full test suite under AddressSanitizer and UBSan.
+
+**Minimum compiler versions** (not CI-tested, but expected to work):
+GCC 8+, Clang 7+, MSVC 2019+ (requires `/std:c17`).
 
 ---
 
@@ -224,6 +240,12 @@ target_link_libraries(my_app PRIVATE qdb::qdb)
 
 qdb_t *db = qdb_open("myapp.qdb");   /* open or create; NULL on failure   */
 qdb_close(db);                        /* flush, unlock, free               */
+
+/* Configurable lease timeout (default: 30 s) */
+
+qdb_open_opts_t opts = {0};
+opts.lease_timeout_s = 120;
+qdb_t *db = qdb_open_ex("myapp.qdb", &opts);
 
 /* Push */
 
@@ -248,27 +270,22 @@ if (rc == QDB_OK) {
     /* queue has no available messages */
 }
 
+/* Stats */
+
+qdb_stats_t db_stats = {0};
+qdb_stats(db, &db_stats);                         /* database-level counts */
+
+qdb_queue_stats_t qs = {0};
+qdb_queue_stats(db, "jobs", &qs);                 /* per-queue counts      */
+
+/* Compaction: rewrite log to drop acked records */
+
+qdb_process_expired_leases(db);   /* expire stale leases first            */
+qdb_compact(db);
+
 /* Error handling */
 
 fprintf(stderr, "%s\n", qdb_errmsg(rc));   /* human-readable description  */
-```
-
-To use a custom lease timeout:
-
-```c
-qdb_open_opts_t opts = {0};
-opts.lease_timeout_s = 120;
-qdb_t *db = qdb_open_ex("myapp.qdb", &opts);
-```
-
-To read database and queue statistics:
-
-```c
-qdb_stats_t db_stats;
-qdb_queue_stats_t queue_stats;
-
-qdb_stats(db, &db_stats);
-qdb_queue_stats(db, "jobs", &queue_stats);
 ```
 
 **Key error codes:**
@@ -307,28 +324,32 @@ and Win32 file APIs, with no `#ifdef` spaghetti in the core logic.
 
 ---
 
-## Status and roadmap
+## Status
 
-**Current release:** v0.1.0
+QDB is in active pre-v1.0.0 development. The full public API is implemented
+and tested. See [`docs/mvp-status.md`](docs/mvp-status.md) for a detailed
+feature breakdown and [`CHANGELOG.md`](CHANGELOG.md) for change history.
 
-**Planned next release:** v0.2.0
+**Implemented and tested:**
 
-Implemented after v0.1.0:
+- Durable push / pop / ack / nack with at-least-once delivery
+- Configurable lease timeout (`qdb_open_ex`)
+- Automatic crash recovery on open (log replay)
+- Exclusive file lock (single-writer enforcement)
+- `qdb_compact()`: crash-safe log compaction via atomic rename
+- `qdb_stats()` / `qdb_queue_stats()`: in-memory observability
+- 14 test suites including multi-process and crash recovery scenarios
+- Fuzz harnesses for the header, record parser, and full replay path
+- CI on Linux (GCC 12, Clang 15/16/17), macOS 14, and Windows (MSVC, clang-cl)
 
-- Queue statistics API
-- Configurable lease timeout API
+**Intentionally absent (v1.0.0 non-goals):**
 
-Planned v0.2.0 focus:
-
-- Multi-process stress testing
-- `qdb_compact()`
-
-Non-goals:
-
-- Networking
-- Clustering
-- Replication
-- Broker/server mode
+- Multi-process or networked access to the same database
+- Pub/sub fan-out, topic routing, or consumer groups
+- Batch push / group commit (fsync cost dominates at single-message granularity)
+- Background lease expiry thread
+- Dead-letter queue / built-in retry limit policy
+- Encryption at rest, authentication, or access control
 
 ---
 
