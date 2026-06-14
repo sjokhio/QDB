@@ -331,9 +331,10 @@ and Win32 file APIs, with no `#ifdef` spaghetti in the core logic.
 
 ## Status
 
-QDB is in active pre-v1.0.0 development. The full public API is implemented
-and tested. See [`docs/mvp-status.md`](docs/mvp-status.md) for a detailed
-feature breakdown and [`CHANGELOG.md`](CHANGELOG.md) for change history.
+QDB v1.0.x is the current stable release. The embedded, durable, single-file 
+core design is complete and stable. Active development is focused on incremental v1.1 improvements. See
+[`docs/mvp-status.md`](docs/mvp-status.md) for a detailed feature breakdown
+and [`CHANGELOG.md`](CHANGELOG.md) for change history.
 
 **Implemented and tested:**
 
@@ -342,12 +343,13 @@ feature breakdown and [`CHANGELOG.md`](CHANGELOG.md) for change history.
 - Automatic crash recovery on open (log replay)
 - Exclusive file lock (single-writer enforcement)
 - `qdb_compact()`: crash-safe log compaction via atomic rename
-- `qdb_stats()` / `qdb_queue_stats()`: in-memory observability
+- `qdb_stats()` / `qdb_queue_stats()` / `qdb_queue_list()`: in-memory observability and queue enumeration
 - 14 test suites including multi-process and crash recovery scenarios
 - Fuzz harnesses for the header, record parser, and full replay path
 - CI on Linux (GCC 12, Clang 15/16/17), macOS 14, and Windows (MSVC, clang-cl)
+- Operational guide: [`docs/maintenance.md`](docs/maintenance.md)
 
-**Intentionally absent (v1.0.0 non-goals):**
+**Intentionally absent (v1.0 non-goals):**
 
 - Multi-process shared access without external coordination
 - Networked/distributed access
