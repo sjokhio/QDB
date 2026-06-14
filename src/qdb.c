@@ -987,6 +987,15 @@ int qdb_compact(qdb_t *db)
     qdb__file_close(compact_fd);
     compact_fd = QDB__INVALID_FD;
 
+    /* On Windows, MoveFileExA(MOVEFILE_REPLACE_EXISTING) fails when the
+     * destination has any open handle, regardless of FILE_SHARE_DELETE.
+     * Close db->fd before the rename; qdb__reopen_after_compact() will
+     * reopen it afterwards.  Its guard handles the already-closed case. */
+#if defined(_WIN32)
+    qdb__file_close(db->fd);
+    db->fd = QDB__INVALID_FD;
+#endif
+
     /* Atomic rename: the staging file becomes the live database. */
     rc = qdb__file_rename(compact_path, db->path);
     if (rc != QDB_OK) {
