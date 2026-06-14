@@ -128,15 +128,16 @@ storage device to measure the intended medium.
 
 ---
 
-## Roadmap impact
+## Throughput levers
 
-| Planned feature | Expected effect |
-|---|---|
-| Group commit (batch fsync) | 10–100× throughput improvement; reduces fsyncs per message to O(1/batch) |
-| WAL write path | Amortises header updates; removes one fsync per operation |
-| Queue-depth API | No throughput impact |
-| Compaction | No throughput impact on write path |
+| Feature | Status | Expected throughput effect |
+|---|---|---|
+| Group commit (batch fsync) | Planned | 10–100× improvement; reduces fsyncs per message to O(1/batch) |
+| WAL write path | Planned | Amortises header updates; removes one fsync per operation |
+| `qdb_stats` / `qdb_queue_stats` | **Implemented** | No throughput impact |
+| `qdb_compact()` | **Implemented** | No throughput impact on write path |
 
-The current per-message fsync model is intentional for the v0.1 MVP:
-it is simple, correct, and easy to reason about.  Throughput improvement
-is explicitly listed as a v0.2+ goal in the [project roadmap](../README.md).
+The current per-message fsync model is intentional for the pre-v1 baseline:
+it is simple, correct, and easy to reason about.  Throughput improvement via
+group commit is the primary v1.x focus.  See [`docs/mvp-status.md`](mvp-status.md)
+for the current feature state.
