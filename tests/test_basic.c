@@ -148,7 +148,7 @@ static void test_push_null_db_returns_inval(void)
 static void test_pop_null_db_returns_inval(void)
 {
     test_begin("qdb_pop(NULL, ...) returns QDB_ERR_INVAL");
-    qdb_msg_t msg = {0, 0, NULL, NULL, 0};
+    qdb_msg_t msg = {0};
     int rc = qdb_pop(NULL, "q", &msg);
     ASSERT_EQ(rc, QDB_ERR_INVAL);
     qdb_msg_free(&msg);

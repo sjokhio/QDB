@@ -92,13 +92,19 @@ typedef struct qdb qdb_t;
  * after a successful qdb_pop() and must release it with qdb_msg_free().
  * Zero-initialising a qdb_msg_t (= {0} or memset to 0) is always safe.
  *
- * @id        Opaque monotonic message identifier.  Pass to qdb_ack().
- * @lease_id  Identifier of the lease granted by qdb_pop().  Pass it with
- *            @id to qdb_ack() or qdb_nack() to resolve the active lease.
- * @queue     Heap-allocated, null-terminated name of the source queue.
- * @data      Heap-allocated copy of the raw message payload.
- *            NULL when @len is zero.
- * @len       Length of @data in bytes.
+ * @id           Opaque monotonic message identifier.  Pass to qdb_ack().
+ * @lease_id     Identifier of the lease granted by qdb_pop().  Pass it with
+ *               @id to qdb_ack() or qdb_nack() to resolve the active lease.
+ * @queue        Heap-allocated, null-terminated name of the source queue.
+ * @data         Heap-allocated copy of the raw message payload.
+ *               NULL when @len is zero.
+ * @len          Length of @data in bytes.
+ * @retry_count  Number of times this message has been returned to the queue
+ *               without being acknowledged.  Incremented by qdb_nack() and
+ *               by qdb_process_expired_leases() when a lease expires.
+ *               Zero on first delivery.  Survives crashes and close/reopen.
+ *               Use this field to implement a dead-letter threshold:
+ *               if (msg.retry_count >= MAX_RETRIES) { move_to_dlq(); }
  */
 typedef struct {
     uint64_t  id;
@@ -106,6 +112,7 @@ typedef struct {
     char     *queue;
     void     *data;
     size_t    len;
+    uint32_t  retry_count;
 } qdb_msg_t;
 
 /* -------------------------------------------------------------------------
@@ -223,6 +230,11 @@ void qdb_close(qdb_t *db);
  *          QDB_ERR_INVAL if any argument is invalid.
  *          QDB_ERR_IO    on a filesystem or flush failure.
  *          QDB_ERR_NOMEM if an internal allocation fails.
+ *
+ * Note on QDB_ERR_NOMEM: if the allocation failure occurs after the record
+ * has already been written durably to disk, the handle's in-memory state
+ * is inconsistent with the on-disk log.  Call qdb_close() and reopen the
+ * database to restore a consistent in-memory view before continuing.
  */
 int qdb_push(qdb_t *db, const char *queue, const void *data, size_t len);
 
@@ -422,12 +434,13 @@ typedef struct {
  *
  * @pending_count  Messages ready to be popped from this queue.
  * @leased_count   Messages currently held by an active lease.
- * @acked_count    Messages permanently consumed from this queue.
+ * @acked_count    Messages permanently consumed from this queue since the
+ *                 last qdb_compact() (or since open if never compacted).
  */
 typedef struct {
-    uint32_t pending_count;
-    uint32_t leased_count;
-    uint32_t acked_count;
+    uint64_t pending_count;
+    uint64_t leased_count;
+    uint64_t acked_count;
 } qdb_queue_stats_t;
 
 /**

@@ -49,11 +49,12 @@ not be shared between threads without external synchronisation.
 
 ```c
 typedef struct {
-    uint64_t  id;        /* opaque monotonic message ID            */
-    uint64_t  lease_id;  /* lease identifier granted by qdb_pop()  */
-    char     *queue;     /* heap-allocated, null-terminated name   */
-    void     *data;      /* heap-allocated payload copy; NULL when len==0 */
-    size_t    len;       /* payload length in bytes                */
+    uint64_t  id;           /* opaque monotonic message ID                  */
+    uint64_t  lease_id;     /* lease identifier granted by qdb_pop()        */
+    char     *queue;        /* heap-allocated, null-terminated name          */
+    void     *data;         /* heap-allocated payload copy; NULL when len==0 */
+    size_t    len;          /* payload length in bytes                       */
+    uint32_t  retry_count;  /* delivery attempts after the first (0 = first) */
 } qdb_msg_t;
 ```
 
@@ -65,6 +66,22 @@ typedef struct {
 - The caller must release them with `qdb_msg_free()`.
 - A zero-initialised `qdb_msg_t` (`= {0}` or `memset` to 0) is always safe to
   pass to `qdb_msg_free()`.
+
+**`retry_count` usage:**
+
+`retry_count` is incremented each time the message is returned to the queue
+without being acknowledged — by `qdb_nack()` or by `qdb_process_expired_leases()`
+when a lease expires.  It survives crashes and close/reopen.  Use it to
+implement a dead-letter threshold:
+
+```c
+if (msg.retry_count >= MAX_RETRIES) {
+    /* move to dead-letter queue or discard */
+    qdb_ack(db, msg.id, msg.lease_id);
+} else {
+    qdb_nack(db, msg.id, msg.lease_id);   /* retry */
+}
+```
 
 ---
 
@@ -160,6 +177,10 @@ Durably append a message to `queue`.
 - `len` — payload length; must be ≤ `QDB_MSG_MAX_LEN`.
 
 **Returns:** `QDB_OK`, `QDB_ERR_INVAL`, `QDB_ERR_IO`, `QDB_ERR_NOMEM`.
+
+**OOM-after-durable-write:** If `QDB_ERR_NOMEM` is returned and the record
+was already written to disk, the handle's in-memory state is inconsistent.
+Call `qdb_close()` and reopen the database before continuing.
 
 ---
 
@@ -307,10 +328,10 @@ in-memory state — no disk I/O is performed.
 
 ```c
 typedef struct {
-    uint64_t pending_count;  /* messages in PENDING state across all queues */
-    uint64_t leased_count;   /* messages in LEASED state across all queues  */
-    uint64_t acked_count;    /* messages ACKed since last compaction         */
-    uint32_t queue_count;    /* number of distinct queues                    */
+    uint64_t queue_count;    /* number of distinct named queues              */
+    uint64_t pending_count;  /* messages in PENDING state across all queues  */
+    uint64_t leased_count;   /* messages in LEASED state across all queues   */
+    uint64_t acked_count;    /* messages ACKed since last compaction          */
     uint64_t file_size_bytes; /* current log file size in bytes              */
 } qdb_stats_t;
 ```

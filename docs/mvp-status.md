@@ -79,10 +79,10 @@ absent, and the reliability guarantees that already hold.
 ## What is intentionally missing
 
 ### Dead-letter queue / retry limit
-`retry_count` is tracked per message and survives crashes, but there is no
-built-in policy to move messages to a dead-letter queue after N failures.
-Callers must check `retry_count` via `qdb_msg_t` after each `qdb_pop()` and
-implement their own threshold.  A first-class public API is planned.
+`retry_count` is tracked per message, survives crashes and close/reopen, and
+is exposed in `qdb_msg_t` (populated by `qdb_pop()`).  There is no built-in
+policy to move messages to a dead-letter queue after N failures; callers check
+`msg.retry_count` after each `qdb_pop()` and implement their own threshold.
 
 ### Batch push / batch pop
 Every push and pop involves at least 2 and 4 `fsync` calls respectively.

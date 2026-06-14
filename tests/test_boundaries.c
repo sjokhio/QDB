@@ -334,7 +334,45 @@ static void test_compact_empty_payload(void)
 }
 
 /* -------------------------------------------------------------------------
- * 5. compact works with a 255-byte queue name
+ * 5. retry_count is populated by qdb_pop()
+ * ---------------------------------------------------------------------- */
+
+static void test_retry_count(void)
+{
+    const char *path = "bnd_retry_count.qdb";
+    test_begin("retry_count: 0 on first pop, 1 after nack");
+    cleanup(path);
+
+    qdb_t *db = qdb_open(path);
+    ASSERT_NOTNULL(db);
+    if (!db) { test_end(); cleanup(path); return; }
+
+    ASSERT_EQ(qdb_push(db, "q", "work", 4), QDB_OK);
+
+    /* First pop: retry_count must be 0. */
+    qdb_msg_t msg = {0};
+    ASSERT_EQ(qdb_pop(db, "q", &msg), QDB_OK);
+    ASSERT_EQ(msg.retry_count, (uint32_t)0);
+    uint64_t mid = msg.id, lid = msg.lease_id;
+    qdb_msg_free(&msg);
+
+    /* Return to queue. */
+    ASSERT_EQ(qdb_nack(db, mid, lid), QDB_OK);
+
+    /* Second pop: retry_count must be 1. */
+    qdb_msg_t msg2 = {0};
+    ASSERT_EQ(qdb_pop(db, "q", &msg2), QDB_OK);
+    ASSERT_EQ(msg2.retry_count, (uint32_t)1);
+    ASSERT_EQ(qdb_ack(db, msg2.id, msg2.lease_id), QDB_OK);
+    qdb_msg_free(&msg2);
+
+    qdb_close(db);
+    test_end();
+    cleanup(path);
+}
+
+/* -------------------------------------------------------------------------
+ * 6. compact works with a 255-byte queue name
  * ---------------------------------------------------------------------- */
 
 static void test_compact_max_name(void)
@@ -390,6 +428,7 @@ int main(void)
     test_max_name_queue_stats();
     test_max_name_reopen();
     test_overlimit_name_rejected();
+    test_retry_count();
     test_compact_empty_payload();
     test_compact_max_name();
 

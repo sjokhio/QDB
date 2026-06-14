@@ -1,8 +1,8 @@
 /*
  * qdb.c — database lifecycle and public API
  *
- * Implements qdb_open() and qdb_close().  Queue operations (push/pop/ack)
- * remain stubs until the WAL write path is implemented.
+ * Implements the full public API: open/close, push/pop/ack/nack,
+ * process_expired_leases, compact, stats, and utility functions.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -59,9 +59,9 @@ static char *make_sidecar(const char *base, size_t base_len, const char *suffix)
  * WAL replay
  *
  * Scans committed records from the WAL file and appends each to the main
- * file.  In this phase push/pop/ack are stubs so no WAL records will exist
- * in practice; the path is implemented in full so the next phase can
- * simply start writing WAL records without touching this code.
+ * file.  The WAL write path is not currently wired to push/pop/ack (all
+ * writes go directly to the main log); this function handles any WAL file
+ * left by a future write path without requiring changes to open/recovery.
  * ---------------------------------------------------------------------- */
 
 static int replay_wal(qdb_t *db)
@@ -488,7 +488,7 @@ void qdb_msg_free(qdb_msg_t *msg)
 }
 
 /* -------------------------------------------------------------------------
- * Queue operation stubs
+ * Queue operations
  * ---------------------------------------------------------------------- */
 
 int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
@@ -585,11 +585,12 @@ int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
     }
 
     /* --- populate caller-owned output --- */
-    out_msg->id       = m->id;
-    out_msg->lease_id = lease_id;
-    out_msg->queue    = q_copy;
-    out_msg->data     = d_copy;
-    out_msg->len      = (size_t)m->data_len;
+    out_msg->id          = m->id;
+    out_msg->lease_id    = lease_id;
+    out_msg->queue       = q_copy;
+    out_msg->data        = d_copy;
+    out_msg->len         = (size_t)m->data_len;
+    out_msg->retry_count = m->retry_count;
 
     return QDB_OK;
 }
@@ -1089,5 +1090,5 @@ const char *qdb_errmsg(int err)
 
 const char *qdb_version(void)
 {
-    return "0.1.0";
+    return QDB_VERSION_STRING;
 }
