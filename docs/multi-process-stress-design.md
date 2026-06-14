@@ -1,10 +1,16 @@
-# Multi-Process Stress Test Design
+# Multi-Process Stress Test Design — IMPLEMENTED
+
+> **This design has been implemented** in `tests/test_mp.c`.
+> All four scenario categories (exclusive locking, sequential hand-off,
+> crash recovery, durability invariants) are covered by the `mp` test suite.
+> This file is retained as a design reference for contributors.
+
+---
 
 QDB v1 does not support concurrent multi-process access to one database. An
 exclusive lock allows only one process to hold a `.qdb` file at a time. These
 tests validate that boundary and the reliability of sequential ownership
 changes; they do not add multi-process concurrency semantics.
-This design is a planning document only; it is not a promise that all scenarios will land in v0.2.0.
 
 ## Test model
 

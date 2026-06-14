@@ -29,6 +29,31 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Fuzz harnesses for the file header, record parser, and full replay path
   (`fuzz_header`, `fuzz_record_parser`, `fuzz_replay`); 30-second CI smoke
   tests run on every push to `src/` or `include/`.
+- API boundary test suite (`test_boundaries.c`): empty-payload round-trip
+  (push/pop/ack with `data=NULL, len=0`), 255-byte queue name round-trip,
+  255-byte name with `qdb_queue_stats`, 256-byte name rejection at
+  push/pop/stats, compact preserving empty-payload messages, compact with
+  255-byte queue name.
+- Version constants unified: `include/qdb.h` now includes the CMake-generated
+  `qdb_version.h` instead of hardcoding `MAJOR/MINOR/PATCH`; `CMakeLists.txt`
+  is the single source of truth for the version.  `QDB_VERSION_NUMBER` macro
+  added to the generated header.
+
+### Changed
+- `examples/hello.c` rewritten from a placeholder stub to a working example
+  demonstrating push, pop, ack, stats, and clean shutdown (~90 lines).
+- `docs/api.md` expanded with sections for `qdb_open_ex`/`qdb_open_opts_t`,
+  `qdb_stats`/`qdb_stats_t`, `qdb_queue_stats`/`qdb_queue_stats_t`, and
+  `qdb_compact` including crash-safety contract and recommended usage pattern.
+- `docs/mvp-status.md` updated to reflect all shipped features; test suite
+  count corrected to 14 suites.
+- `docs/benchmarks.md` roadmap table updated: `qdb_stats`, `qdb_queue_stats`,
+  and `qdb_compact` marked as implemented.
+- README.md overhauled: platform/compiler support matrix added (7 CI
+  configurations), stale "planned features" section replaced with accurate
+  "Implemented" / "Intentionally absent" split, fuzz build instructions and
+  link to `docs/fuzzing.md` added, `examples/hello.c` linked alongside
+  `examples/job_worker.c`.
 
 ### Fixed
 - `next_lease_id` was not persisted across close/reopen when all messages had

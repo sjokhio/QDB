@@ -186,6 +186,17 @@ cmake --build build-san --parallel
 ctest --test-dir build-san --output-on-failure
 ```
 
+To build and run the fuzz harnesses (libFuzzer / AFL++, requires Clang):
+
+```sh
+cmake -B build-fuzz -DCMAKE_C_COMPILER=clang \
+      -DQDB_BUILD_FUZZ=ON -DQDB_SANITIZERS=ON
+cmake --build build-fuzz --parallel
+```
+
+See [`docs/fuzzing.md`](docs/fuzzing.md) for full instructions including AFL++,
+corpus setup, CI interpretation, and crash reproduction.
+
 ### CMake options
 
 | Option | Default | Description |
