@@ -92,6 +92,40 @@ future) and `<path>-lock` (exclusive file lock).
 
 ---
 
+### `qdb_open_ex`
+
+```c
+qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts);
+```
+
+Open (or create) a queue database with configuration options.
+
+Identical to `qdb_open()` when `opts` is `NULL` or zero-initialised.
+Use this function when you need to configure the lease timeout or any
+future open-time option.
+
+**`qdb_open_opts_t`:**
+
+```c
+typedef struct {
+    uint32_t lease_timeout_s;  /* 0 → QDB_DEFAULT_LEASE_TIMEOUT_S (30 s) */
+} qdb_open_opts_t;
+```
+
+Always zero-initialise before setting fields so that future fields default
+correctly:
+
+```c
+qdb_open_opts_t opts = {0};
+opts.lease_timeout_s = 120;   /* 2-minute lease window */
+qdb_t *db = qdb_open_ex("work.qdb", &opts);
+```
+
+**Returns:** pointer to a `qdb_t` handle on success; `NULL` on
+`QDB_ERR_IO`, `QDB_ERR_CORRUPT`, `QDB_ERR_NOMEM`, or `QDB_ERR_LOCKED`.
+
+---
+
 ### `qdb_close`
 
 ```c
@@ -255,6 +289,111 @@ const char *qdb_version(void);
 
 Return the library version as a null-terminated string such as `"0.1.0"`.
 The pointer is a string literal; do not free it.
+
+---
+
+## Observability
+
+### `qdb_stats`
+
+```c
+int qdb_stats(qdb_t *db, qdb_stats_t *out);
+```
+
+Fill `*out` with database-level statistics.  All counts are derived from
+in-memory state — no disk I/O is performed.
+
+**`qdb_stats_t`:**
+
+```c
+typedef struct {
+    uint64_t pending_count;  /* messages in PENDING state across all queues */
+    uint64_t leased_count;   /* messages in LEASED state across all queues  */
+    uint64_t acked_count;    /* messages ACKed since last compaction         */
+    uint32_t queue_count;    /* number of distinct queues                    */
+    uint64_t file_size;      /* current log file size in bytes               */
+} qdb_stats_t;
+```
+
+**Returns:** `QDB_OK`, `QDB_ERR_INVAL` (NULL argument), `QDB_ERR_IO`
+(file-size query failed).
+
+---
+
+### `qdb_queue_stats`
+
+```c
+int qdb_queue_stats(qdb_t *db, const char *queue, qdb_queue_stats_t *out);
+```
+
+Fill `*out` with per-queue statistics for `queue`.
+
+**`qdb_queue_stats_t`:**
+
+```c
+typedef struct {
+    uint64_t pending_count;  /* messages in PENDING state in this queue */
+    uint64_t leased_count;   /* messages in LEASED state in this queue  */
+    uint64_t acked_count;    /* messages ACKed in this queue             */
+} qdb_queue_stats_t;
+```
+
+**Returns:** `QDB_OK`, `QDB_ERR_INVAL` (NULL argument or empty name),
+`QDB_ERR_NOENT` (queue does not exist).
+
+---
+
+## Maintenance
+
+### `qdb_compact`
+
+```c
+int qdb_compact(qdb_t *db);
+```
+
+Rewrite the database file to contain only live queue state, discarding
+ACKed message records accumulated since the last compaction (or since open).
+
+**What compaction does:**
+
+1. Writes a staging file (`<path>-compact`) containing a CHECKPOINT record
+   (to pin `next_msg_id` and `next_lease_id`) followed by PUSH + LEASE
+   records for every PENDING and LEASED message in the current database,
+   preserving original message IDs, lease IDs, and expiry timestamps.
+2. Atomically renames the staging file over the original database file.
+3. Reopens the compacted file and rebuilds in-memory state.
+
+**Recommended usage:**
+
+```c
+/* Expire stale leases before compacting so they are not written to the
+ * compacted file and immediately re-expired on the next open. */
+qdb_process_expired_leases(db);
+int rc = qdb_compact(db);
+if (rc != QDB_OK) { /* see failure contract below */ }
+```
+
+**Crash-safety:**
+
+- A crash *before* the rename leaves the original database intact and the
+  staging file as a harmless sidecar.  The staging file is deleted the next
+  time `qdb_open()` is called on the same path.
+- A crash *after* the rename leaves the compacted database, which is
+  self-consistent and replayed normally on the next `qdb_open()`.
+
+**Failure contract:**
+
+- Failure *before* the database file is replaced (staging-file errors, flush
+  errors, rename errors): the original database is intact and the handle
+  remains valid.  You may retry or continue using the handle.
+- Failure *after* the database file has been replaced (the internal reopen
+  step fails): the handle is explicitly invalidated — `db->fd` is closed and
+  internal state is freed.  Do **not** use the handle for any further
+  operations; call `qdb_close()` to release remaining resources, then reopen
+  the database from disk.
+
+**Returns:** `QDB_OK`, `QDB_ERR_INVAL` (NULL db), `QDB_ERR_IO` (staging
+write, fsync, rename, or reopen failed), `QDB_ERR_NOMEM`.
 
 ---
 

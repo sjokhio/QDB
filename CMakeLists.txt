@@ -184,6 +184,11 @@ install(FILES include/qdb.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
+# qdb.h includes qdb_version.h; install the generated copy alongside it.
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/include/qdb_version.h"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
 install(EXPORT qdbTargets
     FILE        qdbTargets.cmake
     NAMESPACE   qdb::

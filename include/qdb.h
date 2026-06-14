@@ -30,20 +30,14 @@ extern "C" {
 
 /* -------------------------------------------------------------------------
  * Version
+ *
+ * Version constants are generated from CMakeLists.txt and live in the
+ * companion header qdb_version.h (created at build time by CMake).
+ * To bump the version, change VERSION in the top-level CMakeLists.txt;
+ * do not edit qdb_version.h directly.
  * ---------------------------------------------------------------------- */
 
-/** Major component of the QDB library version. */
-#define QDB_VERSION_MAJOR 0
-
-/** Minor component of the QDB library version. */
-#define QDB_VERSION_MINOR 1
-
-/** Patch component of the QDB library version. */
-#define QDB_VERSION_PATCH 0
-
-/** Numeric library version: MAJOR * 10000 + MINOR * 100 + PATCH. */
-#define QDB_VERSION_NUMBER \
-    ((QDB_VERSION_MAJOR) * 10000 + (QDB_VERSION_MINOR) * 100 + (QDB_VERSION_PATCH))
+#include "qdb_version.h"
 
 /* -------------------------------------------------------------------------
  * Error codes

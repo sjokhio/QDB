@@ -10,27 +10,71 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- Initial project structure and build system
-- Public API header (`include/qdb.h`) with documented function signatures
-- CMake build system with support for GCC, Clang, and MSVC
-- GitHub Actions CI for Ubuntu (GCC, Clang), macOS, and Windows
-- Architecture documentation (`docs/architecture.md`)
-- Placeholder test suite (`tests/test_basic.c`)
+- `qdb_open_ex()` and `qdb_open_opts_t` for configurable lease timeout;
+  `qdb_open()` remains the zero-configuration entry point.
+- `qdb_stats()` and `qdb_stats_t` for database-level observability
+  (pending, leased, acked counts; queue count; file size in bytes).
+- `qdb_queue_stats()` and `qdb_queue_stats_t` for per-queue observability.
+- `qdb_compact()`: crash-safe log compaction via temp-file + atomic rename.
+  Excludes ACKed messages from the compacted file; preserves PENDING and
+  LEASED messages with original IDs, lease IDs, and expiry timestamps;
+  writes a CHECKPOINT record to pin counter monotonicity.
+  Stale `-compact` sidecar files from interrupted compactions are cleaned up
+  automatically on the next `qdb_open()`.
+- Multi-process stress test suite (`test_mp.c`): concurrent push/pop/ack
+  workers, lock-contention tests, and sequential hand-off scenarios.
+- Crash recovery tests: worker process is killed after `qdb_ack()` and
+  after `qdb_nack()` respectively; parent verifies correct queue state after
+  reopen.
+- Fuzz harnesses for the file header, record parser, and full replay path
+  (`fuzz_header`, `fuzz_record_parser`, `fuzz_replay`); 30-second CI smoke
+  tests run on every push to `src/` or `include/`.
+
+### Fixed
+- `next_lease_id` was not persisted across close/reopen when all messages had
+  been acknowledged, allowing lease IDs to restart from 1 and potentially
+  collide with IDs seen by long-lived callers.  A CHECKPOINT record written
+  by `qdb_compact()` and replayed on open now pins both `next_msg_id` and
+  `next_lease_id` correctly.
+- Windows compaction: `MoveFileExA(MOVEFILE_REPLACE_EXISTING)` fails when
+  the destination file has any open handle regardless of `FILE_SHARE_DELETE`.
+  `qdb_compact()` now closes `db->fd` before calling `qdb__file_rename()` on
+  Windows, then reopens via the normal recovery path.
+- `qdb_compact()` post-rename failure: if the internal reopen step fails after
+  the database file has already been replaced, the handle is now explicitly
+  invalidated (`db->fd` closed, `db->state` freed) so subsequent API calls
+  return errors rather than crashing on stale pointers.
+- Windows test build: `test_compact.c` was missing the
+  `_CRT_SECURE_NO_WARNINGS` define before `<stdio.h>`, causing MSVC C4996
+  deprecation errors on `fopen()` under `/W4 /WX`.
 
 ---
 
-<!-- Releases will be added here as:
+## [0.1.0] — initial
 
-## [1.0.0] - YYYY-MM-DD
 ### Added
-### Changed
-### Deprecated
-### Removed
-### Fixed
-### Security
+- Initial project structure and CMake build system (static library, install
+  rules, `FetchContent` support, `qdb::qdb` alias target).
+- Public API header (`include/qdb.h`) with fully documented function
+  signatures, error codes, and ownership rules.
+- Core queue operations: `qdb_open`, `qdb_close`, `qdb_push`, `qdb_pop`,
+  `qdb_ack`, `qdb_nack`, `qdb_process_expired_leases`.
+- Append-only log storage engine with CRC-32/ISO-HDLC record integrity,
+  two-phase durable writes (double-fsync + commit marker), and automatic
+  tail-truncation recovery on open.
+- Exclusive file lock (`<path>-lock` sidecar) preventing concurrent writers.
+- Platform abstraction layer supporting Linux (`fdatasync`), macOS
+  (`F_FULLFSYNC`), and Windows (`FlushFileBuffers`, `LockFileEx`).
+- GitHub Actions CI: Ubuntu (GCC 12, Clang 15/16/17), macOS (Apple Clang,
+  Homebrew Clang), Windows (MSVC x64/Win32, clang-cl); all with
+  warnings-as-errors; ASan + UBSan debug builds on Linux and macOS.
+- Test suites: storage layer, log replay, push, pop, ack, nack, lease expiry.
+- Design documentation: file format spec, storage model, message lifecycle
+  state machine, crash recovery protocol, queue semantics, compaction design.
+- Six example and benchmark programs.
+- Three-harness fuzz infrastructure with corpus generator.
 
-[Unreleased]: https://github.com/sjokhio/qdb/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/sjokhio/qdb/releases/tag/v1.0.0
--->
+---
 
-[Unreleased]: https://github.com/sjokhio/qdb/commits/main
+[Unreleased]: https://github.com/sjokhio/qdb/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/sjokhio/qdb/releases/tag/v0.1.0

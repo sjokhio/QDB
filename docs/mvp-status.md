@@ -1,6 +1,6 @@
-# QDB MVP Status
+# QDB Status
 
-This document describes the current state of QDB v0.1, what is intentionally
+This document describes the current state of QDB, what is intentionally
 absent, and the reliability guarantees that already hold.
 
 ---
@@ -16,14 +16,18 @@ absent, and the reliability guarantees that already hold.
 - Exclusive file-lock prevents two processes from opening the same database.
 
 ### Message lifecycle
+
 | API | Status |
 |---|---|
 | `qdb_open` / `qdb_close` | Complete |
+| `qdb_open_ex` (configurable lease timeout) | Complete |
 | `qdb_push` | Complete |
 | `qdb_pop` (with lease) | Complete |
 | `qdb_ack` | Complete |
 | `qdb_nack` | Complete |
 | `qdb_process_expired_leases` | Complete |
+| `qdb_compact` | Complete |
+| `qdb_stats` / `qdb_queue_stats` | Complete |
 
 ### Crash recovery
 - The log is replayed in full on every open.
@@ -34,6 +38,24 @@ absent, and the reliability guarantees that already hold.
   `QDB_ERR_CORRUPT` on open, refusing to operate on a damaged database.
 - `retry_count` is reconstructed from the replay; messages that were
   NACK'd or expired before a crash come back with the correct count.
+- Multi-process crash recovery verified: worker processes are killed
+  mid-operation and the parent process confirms correct state after reopen.
+
+### Compaction
+- `qdb_compact()` rewrites the database to a staging file containing only
+  live queue state (PENDING and LEASED messages), then atomically renames it
+  over the original.
+- Crash-safe: a crash before the rename leaves the original database intact;
+  a crash after the rename leaves the compacted database.
+- Stale `-compact` sidecar files left by interrupted compactions are cleaned
+  up automatically on the next `qdb_open()`.
+- Cross-platform: POSIX uses `rename()`; Windows closes the handle before
+  `MoveFileExA(MOVEFILE_REPLACE_EXISTING)`.
+
+### Observability
+- `qdb_stats()` returns database-level counts (pending, leased, acked,
+  queue count, file size) without disk I/O.
+- `qdb_queue_stats()` returns per-queue counts.
 
 ### In-memory state
 - Separate-chaining hash tables for messages (1 024 buckets), queues
@@ -42,31 +64,25 @@ absent, and the reliability guarantees that already hold.
 - Fibonacci hashing for integer keys; FNV-1a for queue name keys.
 
 ### Test coverage
-- 8 test suites, 1 286+ assertions.
-- Storage layer, log replay, push, pop, ack, nack, and lease expiry each
-  have a dedicated suite.
+- 13 test suites.
+- Storage layer, log replay, push, pop, ack, nack, lease expiry, stats,
+  open_ex, multi-process behaviour, and compaction each have a dedicated suite.
 - I/O failure simulation (close fd mid-operation) verifies that no
   in-memory mutation occurs before the disk write succeeds.
+- Multi-process crash recovery tests cover acked-then-crash and nacked-then-crash
+  scenarios via a worker process that is killed at the critical moment.
+- Three fuzz harnesses (header, record parser, full replay) run in CI as
+  30-second smoke tests and as standalone corpus-replay tools.
 
 ---
 
 ## What is intentionally missing
 
-### Compaction
-The log grows without bound.  A message that is pushed and immediately ACKed
-still leaves two records on disk.  Log compaction (writing a snapshot of live
-messages and truncating obsolete history) is the highest-priority missing
-feature.  Without it, databases with high churn will consume unbounded disk.
-
 ### Dead-letter queue / retry limit
 `retry_count` is tracked per message and survives crashes, but there is no
 built-in policy to move messages to a dead-letter queue after N failures.
-Callers must inspect `qdb_msg_t` internals (via `qdb_state.h`) to implement
-this themselves today; a public API is planned.
-
-### `qdb_queue_depth()` / observability
-There is no public API to query queue depth, message counts, or lease counts
-without inspecting internal state via the private `qdb_state.h` header.
+Callers must check `retry_count` via `qdb_msg_t` after each `qdb_pop()` and
+implement their own threshold.  A first-class public API is planned.
 
 ### Batch push / batch pop
 Every push and pop involves at least 2 and 4 `fsync` calls respectively.
@@ -81,12 +97,8 @@ function periodically.
 ### WAL / checkpoint path
 The code has a `replay_wal` function and WAL-related header fields that were
 scaffolded early, but the WAL write path is not wired to push/pop/ack today.
-All writes go directly to the main log file.  The WAL machinery will be
-activated in a future compaction phase.
-
-### Platform CI
-Linux, macOS, and Windows builds and tests are validated in CI.  Windows
-coverage includes MSVC and clang-cl.
+All writes go directly to the main log file.  The WAL machinery is reserved
+for a future group-commit implementation.
 
 ---
 
