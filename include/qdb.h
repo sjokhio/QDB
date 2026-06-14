@@ -370,6 +370,38 @@ int qdb_nack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
 int qdb_compact(qdb_t *db);
 
 /**
+ * qdb_compact_recommended — heuristic check for whether compaction is worthwhile.
+ *
+ * Sets *@out_recommended to 1 if compaction is likely to reclaim significant
+ * space, or 0 if it is not.  Does not trigger compaction; the caller decides
+ * whether to call qdb_compact().
+ *
+ * Heuristic: compaction is recommended when there are acknowledged records
+ * to reclaim AND the acked count exceeds the live record count:
+ *
+ *     recommended = (acked_count > 0) &&
+ *                   (acked_count > pending_count + leased_count)
+ *
+ * This means reclaimable record slots outnumber live record slots — more than
+ * half the file is recoverable waste.  The ratio is based on record counts,
+ * not byte sizes; with variable payload sizes, the true reclaimable fraction
+ * may differ.  For storage-budget triggers (e.g. file_size_bytes > N), call
+ * qdb_stats() directly and apply your own threshold.
+ *
+ * No disk I/O is performed beyond what qdb_stats() does internally
+ * (one fstat() call for file_size_bytes, which is not used by this function).
+ * No memory is allocated.
+ *
+ * @db               Open database handle.  Must not be NULL.
+ * @out_recommended  Output parameter.  Set to 1 if compaction is recommended,
+ *                   0 otherwise.  Must not be NULL.
+ *
+ * @return  QDB_OK        on success; *@out_recommended is valid.
+ *          QDB_ERR_INVAL if @db or @out_recommended is NULL.
+ */
+int qdb_compact_recommended(qdb_t *db, int *out_recommended);
+
+/**
  * qdb_process_expired_leases — expire overdue leases and requeue messages.
  *
  * Scans all active leases and, for each whose deadline has passed, writes a

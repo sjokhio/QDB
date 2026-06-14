@@ -488,6 +488,61 @@ write, fsync, rename, or reopen failed), `QDB_ERR_NOMEM`.
 
 ---
 
+### `qdb_compact_recommended`
+
+```c
+int qdb_compact_recommended(qdb_t *db, int *out_recommended);
+```
+
+Heuristic check for whether calling `qdb_compact()` is likely to reclaim
+significant space.  Sets `*out_recommended` to `1` (compact) or `0` (skip).
+Does **not** trigger compaction; the caller decides whether to act.
+
+**Heuristic:**
+
+```
+recommended = (acked_count > 0) &&
+              (acked_count > pending_count + leased_count)
+```
+
+Compaction is recommended when there are acknowledged records to reclaim AND
+the acked record count exceeds the live record count (pending + leased).
+This means reclaimable record slots outnumber live record slots — more than
+half the file is recoverable waste.
+
+The ratio is based on **record counts, not byte sizes**.  With variable
+payload sizes the true reclaimable fraction may differ.  For
+storage-budget–based triggers (e.g. `file_size_bytes > N`), call
+`qdb_stats()` directly and apply your own threshold.
+
+No disk I/O is performed beyond what `qdb_stats()` does internally.
+No memory is allocated.
+
+**Parameters:**
+- `db` — open handle; must not be `NULL`.
+- `out_recommended` — output: `1` if compaction is recommended, `0` otherwise;
+  must not be `NULL`.
+
+**Returns:** `QDB_OK`, `QDB_ERR_INVAL` (`db` or `out_recommended` is NULL).
+
+**Typical usage:**
+
+```c
+int recommended = 0;
+if (qdb_compact_recommended(db, &recommended) == QDB_OK && recommended) {
+    qdb_process_expired_leases(db);
+    qdb_compact(db);
+}
+```
+
+**When to prefer `qdb_stats()` directly:**
+
+- You want to trigger on `file_size_bytes > N` (storage-budget threshold).
+- You want a different ratio (e.g. compact when acked > 2× live).
+- You want to log the individual counters alongside the decision.
+
+---
+
 ## Typical worker loop
 
 ```c

@@ -323,3 +323,24 @@ target_link_options(test_queue_list PRIVATE
 add_test(NAME queue_list COMMAND test_queue_list
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# qdb_compact_recommended() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_compact_recommended test_compact_recommended.c)
+
+target_link_libraries(test_compact_recommended PRIVATE qdb::qdb)
+
+target_compile_options(test_compact_recommended PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_compact_recommended PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME compact_recommended COMMAND test_compact_recommended
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)

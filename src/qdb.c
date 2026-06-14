@@ -1097,6 +1097,21 @@ int qdb_queue_list(qdb_t *db,
     return QDB_OK;
 }
 
+int qdb_compact_recommended(qdb_t *db, int *out_recommended)
+{
+    qdb_stats_t st = {0};
+    int         rc;
+
+    if (!db || !out_recommended) { return QDB_ERR_INVAL; }
+
+    rc = qdb_stats(db, &st);
+    if (rc != QDB_OK) { return rc; }
+
+    *out_recommended = (st.acked_count > 0) &&
+                       (st.acked_count > st.pending_count + st.leased_count);
+    return QDB_OK;
+}
+
 /* -------------------------------------------------------------------------
  * Utilities
  * ---------------------------------------------------------------------- */

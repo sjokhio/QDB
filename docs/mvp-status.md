@@ -28,6 +28,7 @@ absent, and the reliability guarantees that already hold.
 | `qdb_process_expired_leases` | Complete |
 | `qdb_compact` | Complete |
 | `qdb_stats` / `qdb_queue_stats` | Complete |
+| `qdb_compact_recommended` | Complete |
 
 ### Crash recovery
 - The log is replayed in full on every open.
@@ -64,7 +65,7 @@ absent, and the reliability guarantees that already hold.
 - Fibonacci hashing for integer keys; FNV-1a for queue name keys.
 
 ### Test coverage
-- 14 test suites.
+- 15 test suites.
 - Storage layer, log replay, push, pop, ack, nack, lease expiry, stats,
   open_ex, multi-process behaviour, and compaction each have a dedicated suite.
 - I/O failure simulation (close fd mid-operation) verifies that no

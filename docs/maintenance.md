@@ -31,28 +31,49 @@ is around 12 ms per live message at the baseline throughput.  On a lightly
 loaded database with a few hundred live messages, compaction takes well under a
 second.
 
-### The right signal: `acked_count`
+### The right signal: `qdb_compact_recommended()`
 
-Call `qdb_stats()` and examine `acked_count`.  That number is the count of
-messages that have been acknowledged since the last compaction (or since the
-database was created if it has never been compacted).  Every acked message
-occupies space in the log that compaction will reclaim.
-
-A practical trigger:
+Use `qdb_compact_recommended()` to ask the library whether compaction is
+worthwhile.  It encodes the standard heuristic and requires no arithmetic on
+your side:
 
 ```c
-qdb_stats_t st = {0};
-qdb_stats(db, &st);
-
-/* Compact when acked waste exceeds the live working set. */
-if (st.acked_count > st.pending_count + st.leased_count) {
+int recommended = 0;
+if (qdb_compact_recommended(db, &recommended) == QDB_OK && recommended) {
     qdb_process_expired_leases(db);   /* expire stale leases first */
     qdb_compact(db);
 }
 ```
 
-This ratio (acked > live) means more than half the file is reclaimable.
-Adjust the threshold to suit your write rate and storage budget.
+The function sets `recommended` to `1` when acked records outnumber live
+records (pending + leased), meaning more than half the file is reclaimable
+waste.  It sets `recommended` to `0` when there is nothing meaningful to
+reclaim (including immediately after a successful compaction, when
+`acked_count` resets to zero).
+
+No disk I/O is performed and no memory is allocated.
+
+### Custom thresholds
+
+If the default heuristic does not fit your workload, call `qdb_stats()`
+directly and apply your own condition:
+
+```c
+qdb_stats_t st = {0};
+qdb_stats(db, &st);
+
+/* Example: compact when acked waste exceeds the live working set. */
+if (st.acked_count > st.pending_count + st.leased_count) {
+    qdb_process_expired_leases(db);
+    qdb_compact(db);
+}
+```
+
+Common reasons to prefer `qdb_stats()` directly:
+
+- Storage-budget trigger: `st.file_size_bytes > N`
+- Tighter ratio: compact only when `acked_count > 2 × live`
+- You want to log the individual counters alongside the compaction decision
 
 ### File-size guidance
 
