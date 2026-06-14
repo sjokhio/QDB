@@ -281,3 +281,24 @@ target_link_options(test_compact PRIVATE
 add_test(NAME compact COMMAND test_compact
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# API boundary tests (empty payload, max/over-limit queue name, compact edge cases)
+# ---------------------------------------------------------------------------
+
+add_executable(test_boundaries test_boundaries.c)
+
+target_link_libraries(test_boundaries PRIVATE qdb::qdb)
+
+target_compile_options(test_boundaries PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_boundaries PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME boundaries COMMAND test_boundaries
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
