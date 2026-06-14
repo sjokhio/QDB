@@ -30,6 +30,7 @@ Just link a library and start queuing jobs.
 - [Performance](#performance)
 - [Building](#building)
 - [API overview](#api-overview)
+- [CLI tool (qdbtool)](#cli-tool-qdbtool)
 - [Design philosophy](#design-philosophy)
 - [Status](#status)
 - [Contributing](#contributing)
@@ -169,7 +170,7 @@ git clone https://github.com/sjokhio/qdb.git
 cd qdb
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-ctest --test-dir build --output-on-failure   # 15 suites
+ctest --test-dir build --output-on-failure   # 16 suites
 ```
 
 To run with sanitizers (Linux / macOS, Clang or GCC):
@@ -308,6 +309,43 @@ Full reference: [`docs/api.md`](docs/api.md) · Durability guarantees: [`docs/re
 
 ---
 
+## CLI tool (qdbtool)
+
+`qdbtool` is a command-line utility for inspecting and maintaining QDB
+database files. It is built entirely on the public QDB API.
+
+```sh
+qdbtool info    myapp.qdb              # database summary
+qdbtool list    myapp.qdb              # queue names
+qdbtool stats   myapp.qdb [<queue>]    # per-queue counts
+qdbtool compact [--force] [--dry-run] myapp.qdb
+qdbtool verify  myapp.qdb              # open-time integrity check
+```
+
+All read commands accept `--json` for machine-readable output:
+
+```sh
+qdbtool info --json myapp.qdb
+# {"file":"myapp.qdb","size_bytes":4206,"queues":2,"pending":5,
+#  "leased":0,"acked":12,"compact_advised":true}
+
+qdbtool list --json myapp.qdb
+# ["emails","jobs"]
+
+qdbtool stats --json myapp.qdb
+# [{"queue":"emails","pending":3,"leased":0,"acked":8},
+#  {"queue":"jobs","pending":2,"leased":0,"acked":4}]
+```
+
+**Note:** `qdbtool` acquires the same exclusive file lock as `qdb_open()`.
+If another process has the database open, every command fails immediately.
+Stop the application before running `qdbtool`.
+
+Built by default (`QDB_BUILD_TOOLS=ON`). Installs to `bin/` alongside the
+library. Run `qdbtool --help` for the full flag reference.
+
+---
+
 ## Design philosophy
 
 **Reliability first.** Every design decision prioritises crash safety over raw
@@ -344,7 +382,7 @@ and [`CHANGELOG.md`](CHANGELOG.md) for change history.
 - Exclusive file lock (single-writer enforcement)
 - `qdb_compact()`: crash-safe log compaction via atomic rename
 - `qdb_stats()` / `qdb_queue_stats()` / `qdb_queue_list()`: in-memory observability and queue enumeration
-- 15 test suites including multi-process and crash recovery scenarios
+- 16 test suites including multi-process and crash recovery scenarios
 - Fuzz harnesses for the header, record parser, and full replay path
 - CI on Linux (GCC 12, Clang 15/16/17), macOS 14, and Windows (MSVC, clang-cl)
 - Operational guide: [`docs/maintenance.md`](docs/maintenance.md)

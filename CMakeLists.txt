@@ -23,6 +23,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ---------------------------------------------------------------------------
 
 option(QDB_BUILD_TESTS        "Build the test suite"              ON)
+option(QDB_BUILD_TOOLS        "Build qdbtool command-line utility" ON)
 option(QDB_BUILD_EXAMPLES     "Build example programs"            ON)
 option(QDB_BUILD_BENCHMARKS   "Build benchmark programs"          OFF)
 option(QDB_BUILD_FUZZ         "Build fuzz harnesses"              OFF)
@@ -139,6 +140,10 @@ target_include_directories(qdb PUBLIC
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+if(QDB_BUILD_TOOLS)
+    add_subdirectory(tools)
+endif()
 
 if(QDB_BUILD_TESTS)
     enable_testing()

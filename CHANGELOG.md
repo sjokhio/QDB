@@ -9,6 +9,27 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `qdb_queue_list()`: enumerate all queue names into a caller-provided buffer.
+  Supports count-only mode (`out=NULL, cap=0`).  No disk I/O, no library
+  allocations.  `qdb_queue_name_t` typedef added to `include/qdb.h`.
+- `qdb_compact_recommended()`: heuristic helper returning `1` when compaction
+  is likely to reclaim significant space
+  (`acked_count > 0 && acked_count > pending_count + leased_count`).
+  No disk I/O, no allocations.  Documented in `docs/api.md` and
+  `docs/maintenance.md`.
+- `qdbtool` command-line utility (`tools/qdbtool.c`) built on the public API.
+  Commands: `info`, `list`, `stats`, `compact`, `verify`.
+  All read commands support `--json` for machine-readable output.
+  `compact` supports `--force` (skip recommendation check) and `--dry-run`
+  (report without compacting).
+  Controlled by the `QDB_BUILD_TOOLS` CMake option (default `ON`).
+  Installs to `bin/` alongside the library.
+- `docs/maintenance.md`: operational guide covering compaction scheduling,
+  backup/restore, monitoring, retry handling, and a startup/shutdown checklist.
+- 16 test suites total (added `test_queue_list`, `test_compact_recommended`,
+  `test_qdbtool`).
+
 ---
 
 ## [1.0.0] — 2026-06-13

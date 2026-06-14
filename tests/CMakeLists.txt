@@ -325,6 +325,38 @@ add_test(NAME queue_list COMMAND test_queue_list
 )
 
 # ---------------------------------------------------------------------------
+# qdbtool integration tests
+# ---------------------------------------------------------------------------
+
+if(QDB_BUILD_TOOLS)
+
+add_executable(test_qdbtool test_qdbtool.c)
+
+target_link_libraries(test_qdbtool PRIVATE qdb::qdb)
+
+target_compile_options(test_qdbtool PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_qdbtool PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_compile_definitions(test_qdbtool PRIVATE
+    QDBTOOL_EXE="$<TARGET_FILE:qdbtool>"
+)
+
+add_dependencies(test_qdbtool qdbtool)
+
+add_test(NAME qdbtool COMMAND test_qdbtool
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+set_tests_properties(qdbtool PROPERTIES TIMEOUT 30)
+
+endif()
+
+# ---------------------------------------------------------------------------
 # qdb_compact_recommended() tests
 # ---------------------------------------------------------------------------
 
