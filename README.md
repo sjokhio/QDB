@@ -349,11 +349,13 @@ feature breakdown and [`CHANGELOG.md`](CHANGELOG.md) for change history.
 
 **Intentionally absent (v1.0.0 non-goals):**
 
-- Multi-process or networked access to the same database
+- Multi-process shared access without external coordination
+- Networked/distributed access
 - Pub/sub fan-out, topic routing, or consumer groups
 - Batch push / group commit (fsync cost dominates at single-message granularity)
 - Background lease expiry thread
-- Dead-letter queue / built-in retry limit policy
+- Built-in dead-letter queue policy
+- Built-in retry limit policy
 - Encryption at rest, authentication, or access control
 
 ---
