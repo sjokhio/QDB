@@ -104,13 +104,19 @@ static int run_tool(const char *args, char *out_buf, size_t out_sz)
         size_t n = fread(out_buf, 1, out_sz - 1, fp);
         out_buf[n] = '\0';
         /* Drain any remainder that did not fit in the caller's buffer. */
-        while (!feof(fp)) {
-            char drain[256];
-            (void)fread(drain, 1, sizeof(drain), fp);
+        {
+            char   drain[256];
+            size_t nread;
+            do {
+                nread = fread(drain, 1, sizeof(drain), fp);
+            } while (nread > 0);
         }
     } else {
-        char drain[256];
-        while (!feof(fp)) { (void)fread(drain, 1, sizeof(drain), fp); }
+        char   drain[256];
+        size_t nread;
+        do {
+            nread = fread(drain, 1, sizeof(drain), fp);
+        } while (nread > 0);
     }
 
 #ifdef _WIN32
