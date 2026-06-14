@@ -18,6 +18,8 @@
 #  if !defined(_POSIX_C_SOURCE)
 #    define _POSIX_C_SOURCE 200809L
 #  endif
+#elif !defined(_CRT_SECURE_NO_WARNINGS)
+#  define _CRT_SECURE_NO_WARNINGS
 #endif
 
 #include "qdb.h"
