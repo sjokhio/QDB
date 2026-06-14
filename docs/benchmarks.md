@@ -1,6 +1,6 @@
 # QDB Benchmark Baseline
 
-This document records the initial performance baseline for the v0.1 MVP.
+This document records the performance baseline captured at v1.0.0.
 All numbers were captured on a single machine in a single session; they are
 reference points for tracking regressions, not marketing claims.
 

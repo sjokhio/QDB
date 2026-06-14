@@ -220,20 +220,20 @@ If the CRC does not match during a scan, the record is treated as corrupt.  A co
 Offset  Size  Type    Field
 ──────  ────  ──────  ─────────────────────────────
      0     8  u64     msg_id
-     8     8  u64     enqueue_time_us   (unix, microseconds)
-    16     2  u16     queue_name_len    (bytes, not chars)
-    18     N  u8[N]   queue_name        (UTF-8, not null-terminated)
-  18+N     4  u32     data_len
-22+N+4     M  u8[M]   data
+     8     1  u8      queue_name_len    (bytes, not chars; 1..255)
+     9     N  u8[N]   queue_name        (not NUL-terminated)
+   9+N     M  u8[M]   data              (M = plen − 9 − N; may be 0)
 ```
 
-Total payload size: `22 + queue_name_len + data_len` bytes.
+Total payload size: `9 + queue_name_len + data_len` bytes.
+
+`data_len` is not stored explicitly; it is derived from the record's `payload_length` field:
+`data_len = payload_length − 9 − queue_name_len`.
 
 Constraints:
 - `msg_id` must be non-zero and equal to the `next_msg_id` value that was in the header when this push began.
 - `queue_name_len` must be in [1, 255].
-- `queue_name` must be valid UTF-8.  (Validated on write; callers are not trusted.)
-- `data_len` must be in [1, 67108864] (64 MiB).
+- `data_len` must be in [0, 67108864] (0 bytes to 64 MiB).  Zero-length payloads are valid.
 
 ### 6.2 `RT_MSG_LEASE`
 

@@ -169,7 +169,7 @@ git clone https://github.com/sjokhio/qdb.git
 cd qdb
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-ctest --test-dir build --output-on-failure   # 14 suites
+ctest --test-dir build --output-on-failure   # 13 suites
 ```
 
 To run with sanitizers (Linux / macOS, Clang or GCC):
@@ -343,7 +343,7 @@ feature breakdown and [`CHANGELOG.md`](CHANGELOG.md) for change history.
 - Exclusive file lock (single-writer enforcement)
 - `qdb_compact()`: crash-safe log compaction via atomic rename
 - `qdb_stats()` / `qdb_queue_stats()`: in-memory observability
-- 14 test suites including multi-process and crash recovery scenarios
+- 13 test suites including multi-process and crash recovery scenarios
 - Fuzz harnesses for the header, record parser, and full replay path
 - CI on Linux (GCC 12, Clang 15/16/17), macOS 14, and Windows (MSVC, clang-cl)
 
