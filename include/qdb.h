@@ -327,6 +327,43 @@ int qdb_ack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
 int qdb_nack(qdb_t *db, uint64_t msg_id, uint64_t lease_id);
 
 /**
+ * qdb_compact — reclaim disk space by rewriting the database.
+ *
+ * Rewrites the database to a compact staging file containing only live
+ * queue state: PENDING and LEASED messages.  ACKED messages are excluded,
+ * freeing the space they occupied.  The operation is crash-safe: a crash
+ * before completion leaves the original database intact; a crash after the
+ * atomic rename leaves the compacted database.
+ *
+ * On success the handle remains valid; all in-memory state is refreshed
+ * from the compact file and subsequent operations continue normally.
+ *
+ * On failure before the database file is replaced (staging-file errors,
+ * flush errors, rename errors) the original database is intact and the
+ * handle remains valid.
+ *
+ * On failure after the database file has been replaced (the internal
+ * reopen step fails) the handle is explicitly invalidated: the file
+ * descriptor is closed and internal state is freed.  Do not use the
+ * handle after qdb_compact() returns a non-QDB_OK code in this case;
+ * call qdb_close() to release remaining resources and reopen the
+ * database from disk.
+ *
+ * Recommended usage: call qdb_process_expired_leases() before
+ * qdb_compact() so that already-expired leases do not persist in the
+ * compacted file as active LEASED messages.
+ *
+ * @db  Open database handle.  Must not be NULL.
+ *
+ * @return  QDB_OK        on success.
+ *          QDB_ERR_INVAL if @db is NULL.
+ *          QDB_ERR_IO    on a filesystem or flush failure.
+ *          QDB_ERR_NOMEM if an internal allocation fails.
+ *          QDB_ERR_CORRUPT if the in-memory queue state is inconsistent.
+ */
+int qdb_compact(qdb_t *db);
+
+/**
  * qdb_process_expired_leases — expire overdue leases and requeue messages.
  *
  * Scans all active leases and, for each whose deadline has passed, writes a

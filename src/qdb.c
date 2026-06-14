@@ -255,6 +255,17 @@ qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
         return NULL;
     }
 
+    /* Delete stale compact staging file left by an interrupted qdb_compact().
+     * Must run after lock acquisition so no other writer is active. */
+    {
+        char *stale = make_sidecar(path, path_len, "-compact");
+        if (stale) {
+            (void)qdb__file_delete(stale);
+            free(stale);
+        }
+        /* OOM here is non-fatal: stale cleanup is best-effort. */
+    }
+
     /* 2. Open or create the main file. */
     if (qdb__file_open(db->path, 1, &db->fd, &is_new) != QDB_OK) {
         qdb__free_db(db);
@@ -753,6 +764,249 @@ int qdb_process_expired_leases(qdb_t *db)
     }
 
     return processed;
+}
+
+/* -------------------------------------------------------------------------
+ * qdb_compact helpers
+ * ---------------------------------------------------------------------- */
+
+static int compact_write_push(qdb__fd_t src_fd, qdb__fd_t dst_fd,
+                               const struct qdb__msg *m, uint64_t *offset)
+{
+    uint32_t  plen;
+    uint8_t  *buf;
+    int       rc;
+
+    /* Safe: data_len <= QDB_MSG_MAX_LEN (64 MiB), name_len <= 255 */
+    plen = (uint32_t)QDB_PUSH_HDR_SIZE
+         + (uint32_t)m->queue_name_len
+         + (uint32_t)m->data_len;
+
+    buf = (uint8_t *)malloc((size_t)plen);
+    if (!buf) { return QDB_ERR_NOMEM; }
+
+    qdb__put_u64le(buf + QDB_PUSH_OFF_MSG_ID,    m->id);
+    buf[QDB_PUSH_OFF_QNAME_LEN] = m->queue_name_len;
+    memcpy(buf + QDB_PUSH_OFF_QNAME, m->queue_name, (size_t)m->queue_name_len);
+
+    if (m->data_len > 0) {
+        rc = qdb__read_full(src_fd,
+                            buf + QDB_PUSH_OFF_QNAME + (size_t)m->queue_name_len,
+                            (size_t)m->data_len, m->data_file_offset);
+        if (rc != QDB_OK) { free(buf); return rc; }
+    }
+
+    rc = qdb__append_record(dst_fd, QDB_RT_MSG_PUSH, buf, plen, offset);
+    free(buf);
+    return rc;
+}
+
+static int compact_write_lease(qdb__fd_t dst_fd, const struct qdb__msg *m,
+                                uint64_t *offset)
+{
+    uint8_t buf[QDB_PAYLOAD_LEASE_SIZE];
+
+    qdb__put_u64le(buf + QDB_LEASE_OFF_MSG_ID,   m->id);
+    qdb__put_u64le(buf + QDB_LEASE_OFF_EXPIRY,   m->lease_expiry_us);
+    qdb__put_u64le(buf + QDB_LEASE_OFF_LEASE_ID, m->lease_id);
+
+    return qdb__append_record(dst_fd, QDB_RT_MSG_LEASE, buf,
+                              QDB_PAYLOAD_LEASE_SIZE, offset);
+}
+
+static int compact_write_checkpoint(qdb__fd_t dst_fd, const qdb_t *db,
+                                     uint64_t *offset)
+{
+    uint8_t buf[QDB_PAYLOAD_CHECKPOINT_SIZE];
+
+    qdb__put_u64le(buf + QDB_CKPT_OFF_TIME_US,       qdb__time_us());
+    qdb__put_u64le(buf + QDB_CKPT_OFF_NEXT_MSG_ID,   db->next_msg_id);
+    qdb__put_u64le(buf + QDB_CKPT_OFF_NEXT_LEASE_ID, db->next_lease_id);
+
+    return qdb__append_record(dst_fd, QDB_RT_CHECKPOINT, buf,
+                              QDB_PAYLOAD_CHECKPOINT_SIZE, offset);
+}
+
+/*
+ * Re-open the database from db->path after a successful compact rename.
+ * Equivalent to qdb_open_ex() steps 3–8 without re-acquiring the lock
+ * (the caller already holds db->lock_fd).
+ */
+static int qdb__reopen_after_compact(qdb_t *db)
+{
+    int      is_new;
+    int      rc;
+    uint64_t file_sz;
+
+    /* Close only if still open.  On Windows, qdb_compact() must close db->fd
+     * before MoveFileExA; on POSIX it is still open here. */
+    if (db->fd != QDB__INVALID_FD) {
+        qdb__file_close(db->fd);
+        db->fd = QDB__INVALID_FD;
+    }
+
+    rc = qdb__file_open(db->path, 0, &db->fd, &is_new);
+    if (rc != QDB_OK) { goto fail; }
+
+    rc = qdb__header_read(db->fd, db);
+    if (rc != QDB_OK) { goto fail; }
+
+    /* Seed next_lease_id before replay (same logic as qdb_open_ex). */
+    db->next_lease_id = 1u;
+
+    /* Compact file always has DIRTY set; replay_wal finds no WAL → QDB_OK. */
+    if ((db->flags & QDB_FLAG_WAL_PRESENT) || (db->flags & QDB_FLAG_DIRTY)) {
+        rc = replay_wal(db);
+        if (rc != QDB_OK) { goto fail; }
+    }
+
+    /* Truncate anything written past log_end_offset. */
+    if (qdb__file_size(db->fd, &file_sz) != QDB_OK) { rc = QDB_ERR_IO; goto fail; }
+    if (file_sz > db->log_end_offset) {
+        if (qdb__file_truncate(db->fd, db->log_end_offset) != QDB_OK) {
+            rc = QDB_ERR_IO;
+            goto fail;
+        }
+    }
+
+    /* Validate log: scan records, truncate uncommitted tail if found. */
+    rc = validate_log(db);
+    if (rc != QDB_OK) { goto fail; }
+
+    /* Rebuild in-memory state from the compact file. */
+    qdb__state_free(db->state);
+    db->state = NULL;
+
+    rc = qdb__replay_log(db);
+    if (rc != QDB_OK) { goto fail; }
+
+    db->flags |= QDB_FLAG_DIRTY;
+    rc = qdb__header_update(db->fd, db);
+    if (rc != QDB_OK) { goto fail; }
+    return QDB_OK;
+
+fail:
+    /* The database file has already been replaced by the compact file.
+     * Recovery is not possible in this function; leave the handle in a
+     * defined invalid state so subsequent API calls return errors rather
+     * than crashing on a stale fd or NULL state pointer. */
+    if (db->fd != QDB__INVALID_FD) {
+        qdb__file_close(db->fd);
+        db->fd = QDB__INVALID_FD;
+    }
+    qdb__state_free(db->state);
+    db->state = NULL;
+    return rc;
+}
+
+/* -------------------------------------------------------------------------
+ * qdb_compact
+ * ---------------------------------------------------------------------- */
+
+int qdb_compact(qdb_t *db)
+{
+    char      *compact_path = NULL;
+    size_t     path_len;
+    qdb__fd_t  compact_fd  = QDB__INVALID_FD;
+    int        is_new;
+    int        rc;
+    struct qdb cmeta;     /* header-field tracking for the staging file */
+    uint64_t   compact_end;
+    uint32_t   b;
+
+    if (!db) { return QDB_ERR_INVAL; }
+
+    path_len     = strlen(db->path);
+    compact_path = make_sidecar(db->path, path_len, "-compact");
+    if (!compact_path) { return QDB_ERR_NOMEM; }
+
+    /* Remove any stale staging file from a prior interrupted compact. */
+    (void)qdb__file_delete(compact_path);
+
+    /* Create the staging file. */
+    rc = qdb__file_open(compact_path, 1, &compact_fd, &is_new);
+    if (rc != QDB_OK) { goto cleanup; }
+
+    /* Write the initial header.  log_end will be updated once at the end;
+     * no per-record header updates are written to the staging file. */
+    memset(&cmeta, 0, sizeof(cmeta));
+    cmeta.create_time_us   = db->create_time_us;
+    cmeta.next_msg_id      = db->next_msg_id;
+    cmeta.next_lease_id    = db->next_lease_id;
+    cmeta.log_start_offset = QDB_HDR_SIZE;
+    cmeta.log_end_offset   = QDB_HDR_SIZE;
+    cmeta.flags            = QDB_FLAG_DIRTY;
+
+    rc = qdb__header_write(compact_fd, &cmeta);
+    if (rc != QDB_OK) { goto cleanup; }
+
+    compact_end = QDB_HDR_SIZE;
+
+    /* PENDING messages: iterate each queue's FIFO chain (head → tail). */
+    for (b = 0; b < QDB__QUEUE_BUCKETS; b++) {
+        const struct qdb__queue *q = db->state->queue_buckets[b];
+        while (q) {
+            uint64_t m_id = q->pending_head;
+            while (m_id != 0) {
+                const struct qdb__msg *m = qdb__msg_get(db->state, m_id);
+                if (!m) { rc = QDB_ERR_CORRUPT; goto cleanup; }
+                rc = compact_write_push(db->fd, compact_fd, m, &compact_end);
+                if (rc != QDB_OK) { goto cleanup; }
+                m_id = m->next_pending;
+            }
+            q = q->next_in_bucket;
+        }
+    }
+
+    /* LEASED messages: one PUSH record then one LEASE record each. */
+    for (b = 0; b < QDB__LEASE_BUCKETS; b++) {
+        const struct qdb__lease *l = db->state->lease_buckets[b];
+        while (l) {
+            const struct qdb__msg *m = qdb__msg_get(db->state, l->msg_id);
+            if (!m) { rc = QDB_ERR_CORRUPT; goto cleanup; }
+            rc = compact_write_push(db->fd, compact_fd, m, &compact_end);
+            if (rc != QDB_OK) { goto cleanup; }
+            rc = compact_write_lease(compact_fd, m, &compact_end);
+            if (rc != QDB_OK) { goto cleanup; }
+            l = l->next_in_bucket;
+        }
+    }
+
+    /* CHECKPOINT — always the final record, pins counter monotonicity. */
+    rc = compact_write_checkpoint(compact_fd, db, &compact_end);
+    if (rc != QDB_OK) { goto cleanup; }
+
+    /* Single header update for all records at once, then full fsync. */
+    cmeta.log_end_offset = compact_end;
+    rc = qdb__header_update(compact_fd, &cmeta);
+    if (rc != QDB_OK) { goto cleanup; }
+
+    rc = qdb__file_sync(compact_fd);
+    if (rc != QDB_OK) { goto cleanup; }
+
+    qdb__file_close(compact_fd);
+    compact_fd = QDB__INVALID_FD;
+
+    /* Atomic rename: the staging file becomes the live database. */
+    rc = qdb__file_rename(compact_path, db->path);
+    if (rc != QDB_OK) {
+        (void)qdb__file_delete(compact_path);
+        free(compact_path);
+        return rc;
+    }
+
+    free(compact_path);
+
+    /* Rebuild in-memory state from the compacted file. */
+    return qdb__reopen_after_compact(db);
+
+cleanup:
+    if (compact_fd != QDB__INVALID_FD) {
+        qdb__file_close(compact_fd);
+    }
+    (void)qdb__file_delete(compact_path);
+    free(compact_path);
+    return rc;
 }
 
 /* -------------------------------------------------------------------------

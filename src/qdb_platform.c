@@ -235,8 +235,10 @@ int qdb__file_open(const char *path, int create,
     DWORD access = GENERIC_READ | GENERIC_WRITE;
 
     if (create) {
-        /* CREATE_NEW fails if exists → we know it's new. */
-        HANDLE h = CreateFileA(path, access, 0, NULL, CREATE_NEW,
+        /* CREATE_NEW fails if exists → we know it's new.
+         * FILE_SHARE_DELETE allows qdb__file_rename() to replace this file
+         * via MoveFileExA(MOVEFILE_REPLACE_EXISTING) while a handle is open. */
+        HANDLE h = CreateFileA(path, access, FILE_SHARE_DELETE, NULL, CREATE_NEW,
                                FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
         if (h != INVALID_HANDLE_VALUE) {
             *out_fd    = H2FD(h);
@@ -249,8 +251,10 @@ int qdb__file_open(const char *path, int create,
         }
     }
 
-    /* Open existing. */
-    HANDLE h = CreateFileA(path, access, 0, NULL, OPEN_EXISTING,
+    /* Open existing.
+     * FILE_SHARE_DELETE allows qdb_compact() to atomically replace this file
+     * via MoveFileExA(MOVEFILE_REPLACE_EXISTING) without first closing db->fd. */
+    HANDLE h = CreateFileA(path, access, FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
                            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
     if (h == INVALID_HANDLE_VALUE) {
         return QDB_ERR_IO;

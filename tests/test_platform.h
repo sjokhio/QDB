@@ -51,11 +51,14 @@ static inline void qdb_test_cleanup_files(const char *path)
     size_t plen = strlen(path);
 
     (void)qdb_test_remove_file(path);
-    if (plen + 6 < sizeof(sidecar)) {
+    /* "-compact\0" is 9 bytes — the longest suffix; use that as the bound. */
+    if (plen + 9 < sizeof(sidecar)) {
         memcpy(sidecar, path, plen);
         memcpy(sidecar + plen, "-wal", 5);
         (void)qdb_test_remove_file(sidecar);
         memcpy(sidecar + plen, "-lock", 6);
+        (void)qdb_test_remove_file(sidecar);
+        memcpy(sidecar + plen, "-compact", 9);
         (void)qdb_test_remove_file(sidecar);
     }
 }

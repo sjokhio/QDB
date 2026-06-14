@@ -260,3 +260,24 @@ add_test(NAME mp COMMAND test_mp
 )
 
 set_tests_properties(mp PROPERTIES TIMEOUT 15)
+
+# ---------------------------------------------------------------------------
+# qdb_compact() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_compact test_compact.c)
+
+target_link_libraries(test_compact PRIVATE qdb::qdb)
+
+target_compile_options(test_compact PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_compact PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME compact COMMAND test_compact
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
