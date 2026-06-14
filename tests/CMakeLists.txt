@@ -302,3 +302,24 @@ target_link_options(test_boundaries PRIVATE
 add_test(NAME boundaries COMMAND test_boundaries
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# qdb_queue_list() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_queue_list test_queue_list.c)
+
+target_link_libraries(test_queue_list PRIVATE qdb::qdb)
+
+target_compile_options(test_queue_list PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_queue_list PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME queue_list COMMAND test_queue_list
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)

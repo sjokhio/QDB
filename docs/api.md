@@ -45,6 +45,17 @@ Opaque database handle.  Obtain with `qdb_open()`; release with `qdb_close()`.
 Do not copy, stack-allocate, or dereference directly.  A single handle must
 not be shared between threads without external synchronisation.
 
+### `qdb_queue_name_t`
+
+```c
+typedef struct {
+    char name[QDB_QUEUE_NAME_MAX + 1];
+} qdb_queue_name_t;
+```
+
+Single queue name entry returned by `qdb_queue_list()`.  `name` is always
+null-terminated.  Always zero-initialise before use.
+
 ### `qdb_msg_t`
 
 ```c
@@ -361,6 +372,65 @@ typedef struct {
 
 **Returns:** `QDB_OK`, `QDB_ERR_INVAL` (NULL argument or empty name),
 `QDB_ERR_NOENT` (queue does not exist).
+
+---
+
+### `qdb_queue_list`
+
+```c
+int qdb_queue_list(qdb_t *db,
+                   qdb_queue_name_t *out, size_t cap,
+                   size_t *out_count);
+```
+
+Enumerate queue names into a caller-provided buffer.
+
+Copies up to `cap` queue names into `out[]`.  `*out_count` is always set to
+the total number of queues in the database, even when that exceeds `cap`.
+When `*out_count > cap` the buffer was too small; allocate a larger buffer and
+call again.
+
+To query the count without copying names, pass `out = NULL` and `cap = 0`.
+
+Names are returned in unspecified order.  Sort the result if a stable order
+is needed (e.g. for display).
+
+No disk I/O is performed.  No memory is allocated by the library.
+
+Queue entries persist for the lifetime of the handle: a queue created by a
+push and later fully acknowledged still appears.  Entries are removed only by
+`qdb_compact()` followed by close and reopen.
+
+**Parameters:**
+- `db` — open handle; must not be `NULL`.
+- `out` — caller-allocated array of at least `cap` entries; may be `NULL`
+  when `cap` is `0`.
+- `cap` — capacity of `out` in entries.
+- `out_count` — output: total queue count; must not be `NULL`.
+
+**Returns:** `QDB_OK`, `QDB_ERR_INVAL` (`db` or `out_count` is NULL, or
+`out` is NULL while `cap > 0`).
+
+**Typical usage:**
+
+```c
+/* Count-only */
+size_t n;
+qdb_queue_list(db, NULL, 0, &n);
+
+/* Fixed stack buffer */
+qdb_queue_name_t names[64];
+size_t count;
+if (qdb_queue_list(db, names, 64, &count) == QDB_OK) {
+    size_t i, limit = count < 64 ? count : 64;
+    for (i = 0; i < limit; i++)
+        printf("%s\n", names[i].name);
+}
+
+/* Compose with qdb_queue_stats() */
+qdb_queue_stats_t qs = {0};
+qdb_queue_stats(db, names[0].name, &qs);
+```
 
 ---
 

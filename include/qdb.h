@@ -483,6 +483,55 @@ int qdb_queue_stats(qdb_t *db, const char *queue, qdb_queue_stats_t *out);
 #define QDB_MSG_MAX_LEN    (64u * 1024u * 1024u)
 
 /* -------------------------------------------------------------------------
+ * Queue enumeration
+ * ---------------------------------------------------------------------- */
+
+/**
+ * qdb_queue_name_t — single queue name entry returned by qdb_queue_list().
+ *
+ * Always zero-initialise before use.  @name is a null-terminated UTF-8
+ * string.  The buffer is large enough to hold any valid queue name.
+ */
+typedef struct {
+    char name[QDB_QUEUE_NAME_MAX + 1];
+} qdb_queue_name_t;
+
+/**
+ * qdb_queue_list — enumerate queue names into a caller-provided buffer.
+ *
+ * Copies up to @cap queue names into @out[].  *@out_count is always set to
+ * the total number of queues in the database, even when that exceeds @cap.
+ * When *@out_count > @cap the buffer was too small; allocate a larger buffer
+ * and call again.
+ *
+ * To query the count without copying names, pass @out = NULL and @cap = 0.
+ *
+ * Names are returned in unspecified order (hash-table traversal order).
+ * Sort @out[] if a stable order is required.
+ *
+ * No disk I/O is performed.  No memory is allocated by the library.
+ *
+ * Queue entries persist for the lifetime of the database handle: a queue
+ * that was created by a push and later fully acknowledged still appears in
+ * the list.  Queue entries are removed only by qdb_compact() followed by
+ * close and reopen.
+ *
+ * @db        Open database handle.  Must not be NULL.
+ * @out       Caller-allocated array of at least @cap entries.
+ *            May be NULL only when @cap is 0.
+ * @cap       Capacity of @out in entries.  Pass 0 for a count-only query.
+ * @out_count Output: total number of queues in @db.  Must not be NULL.
+ *
+ * @return  QDB_OK         on success; *@out_count is set and up to @cap
+ *                         names are written to @out.
+ *          QDB_ERR_INVAL  if @db or @out_count is NULL, or if @out is NULL
+ *                         and @cap is non-zero.
+ */
+int qdb_queue_list(qdb_t *db,
+                   qdb_queue_name_t *out, size_t cap,
+                   size_t *out_count);
+
+/* -------------------------------------------------------------------------
  * Utilities
  * ---------------------------------------------------------------------- */
 

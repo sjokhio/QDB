@@ -1069,6 +1069,34 @@ int qdb_queue_stats(qdb_t *db, const char *queue, qdb_queue_stats_t *out)
     return QDB_OK;
 }
 
+int qdb_queue_list(qdb_t *db,
+                   qdb_queue_name_t *out, size_t cap,
+                   size_t *out_count)
+{
+    struct qdb__state *st;
+    size_t             total = 0;
+    uint32_t           b;
+
+    if (!db || !out_count)  { return QDB_ERR_INVAL; }
+    if (!out && cap > 0)    { return QDB_ERR_INVAL; }
+
+    st = db->state;
+
+    for (b = 0; b < QDB__QUEUE_BUCKETS; b++) {
+        const struct qdb__queue *q = st->queue_buckets[b];
+        while (q) {
+            if (out && total < cap) {
+                memcpy(out[total].name, q->name, (size_t)q->name_len + 1u);
+            }
+            total++;
+            q = q->next_in_bucket;
+        }
+    }
+
+    *out_count = total;
+    return QDB_OK;
+}
+
 /* -------------------------------------------------------------------------
  * Utilities
  * ---------------------------------------------------------------------- */
