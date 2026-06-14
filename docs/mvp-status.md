@@ -64,7 +64,7 @@ absent, and the reliability guarantees that already hold.
 - Fibonacci hashing for integer keys; FNV-1a for queue name keys.
 
 ### Test coverage
-- 13 test suites.
+- 14 test suites.
 - Storage layer, log replay, push, pop, ack, nack, lease expiry, stats,
   open_ex, multi-process behaviour, and compaction each have a dedicated suite.
 - I/O failure simulation (close fd mid-operation) verifies that no
