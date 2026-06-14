@@ -30,8 +30,8 @@ Use `qdb_errmsg(rc)` to get a human-readable description of any error code.
 |---|---|---|
 | `QDB_QUEUE_NAME_MAX` | 255 | Max queue name length (bytes, excluding NUL) |
 | `QDB_MSG_MAX_LEN` | 67 108 864 | Max message payload size (64 MiB) |
-| `QDB_VERSION_MAJOR` | 0 | Major version component |
-| `QDB_VERSION_MINOR` | 1 | Minor version component |
+| `QDB_VERSION_MAJOR` | 1 | Major version component |
+| `QDB_VERSION_MINOR` | 0 | Minor version component |
 | `QDB_VERSION_PATCH` | 0 | Patch version component |
 | `QDB_VERSION_NUMBER` | computed | `MAJOR*10000 + MINOR*100 + PATCH` |
 
@@ -308,7 +308,7 @@ pointer is a string literal; do not free it.  Unknown codes return
 const char *qdb_version(void);
 ```
 
-Return the library version as a null-terminated string such as `"0.1.0"`.
+Return the library version as a null-terminated string such as `"1.0.0"`.
 The pointer is a string literal; do not free it.
 
 ---

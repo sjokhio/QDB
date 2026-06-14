@@ -500,7 +500,7 @@ const char *qdb_errmsg(int err);
 /**
  * qdb_version — return the library version as a string.
  *
- * @return  Pointer to a null-terminated string such as "0.1.0".
+ * @return  Pointer to a null-terminated string such as "1.0.0".
  *          The string is a literal; do not free it.
  */
 const char *qdb_version(void);

@@ -19,12 +19,6 @@ Just link a library and start queuing jobs.
 
 ---
 
-> [!WARNING]
-> **Pre-release software.** QDB is approaching v1.0.0 but has not yet
-> reached it. The file format and public API are stable but not yet
-> frozen. Do not use in production without extensive testing and a clear
-> understanding of [current limitations](docs/mvp-status.md).
-
 ---
 
 ## Contents
@@ -215,7 +209,7 @@ include(FetchContent)
 FetchContent_Declare(
     qdb
     GIT_REPOSITORY https://github.com/sjokhio/qdb.git
-    GIT_TAG        v0.1.0
+    GIT_TAG        v1.0.0
 )
 FetchContent_MakeAvailable(qdb)
 

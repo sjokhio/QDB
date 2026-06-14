@@ -9,6 +9,10 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [1.0.0] — 2026-06-13
+
 ### Added
 - `qdb_open_ex()` and `qdb_open_opts_t` for configurable lease timeout;
   `qdb_open()` remains the zero-configuration entry point.
@@ -101,5 +105,6 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sjokhio/qdb/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sjokhio/qdb/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/sjokhio/qdb/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/sjokhio/qdb/releases/tag/v0.1.0
