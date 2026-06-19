@@ -114,6 +114,31 @@ add_test(NAME pop COMMAND test_pop
 )
 
 # ---------------------------------------------------------------------------
+# qdb_pop_any() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_pop_any test_pop_any.c)
+
+target_include_directories(test_pop_any PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_pop_any PRIVATE qdb::qdb)
+
+target_compile_options(test_pop_any PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_pop_any PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME pop_any COMMAND test_pop_any
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+# ---------------------------------------------------------------------------
 # qdb_ack() tests
 # ---------------------------------------------------------------------------
 

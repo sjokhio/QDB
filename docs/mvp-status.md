@@ -23,6 +23,7 @@ absent, and the reliability guarantees that already hold.
 | `qdb_open_ex` (configurable lease timeout) | Complete |
 | `qdb_push` | Complete |
 | `qdb_pop` (with lease) | Complete |
+| `qdb_pop_any` (global oldest across all queues) | Complete |
 | `qdb_ack` | Complete |
 | `qdb_nack` | Complete |
 | `qdb_process_expired_leases` | Complete |

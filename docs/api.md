@@ -224,6 +224,48 @@ ensure messages with expired leases are returned to PENDING before the pop.
 
 ---
 
+### `qdb_pop_any`
+
+```c
+int qdb_pop_any(qdb_t *db, qdb_msg_t *out_msg);
+```
+
+Dequeue the globally oldest PENDING message across **all queues** and grant it
+a time-bounded lease.
+
+Equivalent to `qdb_pop()` but without naming a specific queue.  The message
+with the lowest message ID across every queue's `pending_head` is selected.
+Because message IDs are assigned from a single global monotonic counter at push
+time, the minimum `pending_head` ID is the oldest currently-available message
+in the entire database.
+
+The source queue name is available in `out_msg->queue` after a successful call.
+
+On success `*out_msg` is populated with heap-allocated copies of the queue name
+and payload.  The caller owns these and must release them with `qdb_msg_free()`.
+
+**Call `qdb_process_expired_leases()` before `qdb_pop_any()` in a worker loop**
+to ensure messages with expired leases are returned to PENDING before the pop.
+
+**Ordering guarantees:**
+
+- Within a single queue, messages are returned in push order (FIFO).
+- Across queues, messages are returned in global push order: the message pushed
+  earliest (lowest ID) is returned first, regardless of which queue it belongs
+  to.
+- A NACK'd or expired message goes to the **tail** of its queue, not back to the
+  position it was originally pushed from.  Its ID does not change, so it will
+  appear after any message that was pushed after it but not yet consumed.
+
+**Parameters:**
+- `db` — open handle; must not be `NULL`.
+- `out_msg` — output parameter; must not be `NULL`.
+
+**Returns:** `QDB_OK`, `QDB_ERR_EMPTY` (no pending messages anywhere),
+`QDB_ERR_INVAL`, `QDB_ERR_IO`, `QDB_ERR_NOMEM`.
+
+---
+
 ### `qdb_ack`
 
 ```c

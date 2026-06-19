@@ -10,6 +10,13 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `qdb_pop_any()`: dequeue the globally oldest available message across all
+  queues.  Selects the queue whose `pending_head` has the lowest message ID,
+  which is the oldest currently-available message in the database (message IDs
+  are assigned from a single global counter at push time).  Shares the
+  `do_pop()` lease-issuance helper with `qdb_pop()`; writes the same
+  `QDB_RT_MSG_LEASE` record; no storage format change.  12 tests added in
+  `test_pop_any.c`.  Documented in `docs/api.md`.
 - `qdb_queue_list()`: enumerate all queue names into a caller-provided buffer.
   Supports count-only mode (`out=NULL, cap=0`).  No disk I/O, no library
   allocations.  `qdb_queue_name_t` typedef added to `include/qdb.h`.

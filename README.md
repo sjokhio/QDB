@@ -262,7 +262,10 @@ int rc = qdb_push(db, "jobs", payload, len);   /* append to named queue   */
 qdb_process_expired_leases(db);   /* call at top of worker loop           */
 
 qdb_msg_t msg = {0};
-rc = qdb_pop(db, "jobs", &msg);   /* dequeue; grants time-bounded lease   */
+rc = qdb_pop(db, "jobs", &msg);   /* dequeue from named queue             */
+
+/* Or dequeue the globally oldest message across all queues */
+rc = qdb_pop_any(db, &msg);       /* msg.queue tells you where it came from */
 
 if (rc == QDB_OK) {
     /* msg.data and msg.queue are heap-allocated copies; caller owns them */
@@ -273,7 +276,7 @@ if (rc == QDB_OK) {
     }
     qdb_msg_free(&msg);
 } else if (rc == QDB_ERR_EMPTY) {
-    /* queue has no available messages */
+    /* no available messages (queue or database is empty) */
 }
 
 /* Stats */

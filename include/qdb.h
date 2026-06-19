@@ -284,6 +284,35 @@ void qdb_msg_free(qdb_msg_t *msg);
 int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg);
 
 /**
+ * qdb_pop_any — dequeue the globally oldest available message across all queues.
+ *
+ * Equivalent to qdb_pop() but without specifying a queue.  The message with
+ * the lowest message ID across all queues' pending_head entries is selected,
+ * dequeued, and granted a time-bounded lease.  Because message IDs are
+ * assigned from a single global monotonic counter at push time, the minimum
+ * pending_head ID is always the oldest currently-available message in the
+ * database.
+ *
+ * The caller does not need to know which queue the message belongs to; the
+ * queue name is available in out_msg->queue after a successful call.
+ *
+ * Ownership and lifecycle rules are identical to qdb_pop(): on QDB_OK the
+ * caller owns *out_msg and must release it with qdb_msg_free().
+ *
+ * @db       Open database handle.  Must not be NULL.
+ * @out_msg  Output parameter.  Populated on success.  Must not be NULL.
+ *           The caller owns the contents after a QDB_OK return.
+ *
+ * @return  QDB_OK         on success; *@out_msg is populated.
+ *          QDB_ERR_EMPTY  if no queue has any available messages.
+ *          QDB_ERR_INVAL  if any argument is NULL.
+ *          QDB_ERR_IO     on a read or write failure.
+ *          QDB_ERR_NOMEM  if a heap allocation fails.
+ *          QDB_ERR_CORRUPT if the in-memory queue state is inconsistent.
+ */
+int qdb_pop_any(qdb_t *db, qdb_msg_t *out_msg);
+
+/**
  * qdb_ack — acknowledge and permanently delete a leased message.
  *
  * Marks the message identified by @msg_id as permanently consumed.  The

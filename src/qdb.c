@@ -480,50 +480,49 @@ void qdb_msg_free(qdb_msg_t *msg)
     }
     free(msg->queue);
     free(msg->data);
-    msg->id       = 0;
-    msg->lease_id = 0;
-    msg->queue    = NULL;
-    msg->data     = NULL;
-    msg->len      = 0;
+    msg->id          = 0;
+    msg->lease_id    = 0;
+    msg->queue       = NULL;
+    msg->data        = NULL;
+    msg->len         = 0;
+    msg->retry_count = 0;
 }
 
 /* -------------------------------------------------------------------------
  * Queue operations
+ *
+ * do_pop() contains the lease-issuance logic shared by qdb_pop() and
+ * qdb_pop_any().  The caller locates the target queue and message; do_pop()
+ * allocates return buffers, writes the durable LEASE record, updates
+ * in-memory state, and populates out_msg.
  * ---------------------------------------------------------------------- */
 
-int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
+static int do_pop(qdb_t *db, struct qdb__queue *q, struct qdb__msg *m,
+                  qdb_msg_t *out_msg)
 {
-    size_t              qlen;
-    uint8_t             name_len;
-    struct qdb__queue  *q;
-    struct qdb__msg    *m;
-    uint64_t            lease_id;
-    uint64_t            expiry_us;
-    uint8_t             lease_buf[QDB_PAYLOAD_LEASE_SIZE];
-    uint64_t            new_end;
-    struct qdb__lease  *l;
-    char               *q_copy;
-    void               *d_copy;
-    int                 rc;
+    uint64_t           lease_id;
+    uint64_t           expiry_us;
+    uint8_t            lease_buf[QDB_PAYLOAD_LEASE_SIZE];
+    uint64_t           new_end;
+    struct qdb__lease *l;
+    char              *q_copy;
+    void              *d_copy;
+    int                rc;
 
-    /* --- input validation --- */
-    if (!db || !queue || !out_msg) { return QDB_ERR_INVAL; }
-    qlen = strlen(queue);
-    if (qlen == 0 || qlen > QDB_QUEUE_NAME_MAX) { return QDB_ERR_INVAL; }
-    name_len = (uint8_t)qlen;
-
-    /* --- find queue and head message --- */
-    q = qdb__queue_get(db->state, queue, name_len);
-    if (!q || q->pending_count == 0 || q->pending_head == 0) {
-        return QDB_ERR_EMPTY;
-    }
-    m = qdb__msg_get(db->state, q->pending_head);
-    if (!m) { return QDB_ERR_CORRUPT; }
-
-    /* --- pre-allocate return buffers and read data before touching disk --- */
-    q_copy = (char *)malloc(qlen + 1u);
+    /*
+     * Pre-allocate all heap objects before touching disk.  This guarantees
+     * that if any allocation fails we return QDB_ERR_NOMEM with no disk side
+     * effects and no in-memory state changes.
+     *
+     * The lease struct must be allocated here (not after the disk write)
+     * because qdb__lease_insert() is a pure pointer-link with no further
+     * allocation.  Once the durable LEASE record is on disk we commit the
+     * insert unconditionally — a successful pop must never leave a lease
+     * absent from lease_buckets.
+     */
+    q_copy = (char *)malloc((size_t)m->queue_name_len + 1u);
     if (!q_copy) { return QDB_ERR_NOMEM; }
-    memcpy(q_copy, queue, qlen + 1u);
+    memcpy(q_copy, m->queue_name, (size_t)m->queue_name_len + 1u);
 
     d_copy = NULL;
     if (m->data_len > 0) {
@@ -541,6 +540,13 @@ int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
         }
     }
 
+    l = (struct qdb__lease *)calloc(1, sizeof(*l));
+    if (!l) {
+        free(d_copy);
+        free(q_copy);
+        return QDB_ERR_NOMEM;
+    }
+
     /* --- assign lease and build payload --- */
     lease_id  = db->next_lease_id;
     expiry_us = qdb__time_us() + db->lease_timeout_us;
@@ -554,16 +560,23 @@ int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
     rc = qdb__append_record(db->fd, QDB_RT_MSG_LEASE,
                             lease_buf, QDB_PAYLOAD_LEASE_SIZE, &new_end);
     if (rc != QDB_OK) {
+        free(l);
         free(d_copy);
         free(q_copy);
         return rc;
     }
 
-    /* --- persist header (log_end_offset) --- */
+    /* --- persist header --- */
     db->log_end_offset = new_end;
     db->next_lease_id  = lease_id + 1u;
     if (qdb__header_update(db->fd, db) != QDB_OK) {
-        /* Record is durable but header update failed. */
+        /*
+         * The LEASE record is durable; header update failure leaves the
+         * database in a recoverable state (replay will reconstruct on the
+         * next qdb_open).  Free the pre-allocated lease struct and return
+         * the error so the caller is aware of the partial write.
+         */
+        free(l);
         free(d_copy);
         free(q_copy);
         return QDB_ERR_IO;
@@ -576,13 +589,11 @@ int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
     m->lease_expiry_us = expiry_us;
     q->leased_count++;
 
-    l = (struct qdb__lease *)calloc(1, sizeof(*l));
-    if (l) {
-        l->lease_id  = lease_id;
-        l->msg_id    = m->id;
-        l->expiry_us = expiry_us;
-        (void)qdb__lease_insert(db->state, l);
-    }
+    /* qdb__lease_insert() links l into lease_buckets — no allocation, cannot fail. */
+    l->lease_id  = lease_id;
+    l->msg_id    = m->id;
+    l->expiry_us = expiry_us;
+    (void)qdb__lease_insert(db->state, l);
 
     /* --- populate caller-owned output --- */
     out_msg->id          = m->id;
@@ -593,6 +604,72 @@ int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
     out_msg->retry_count = m->retry_count;
 
     return QDB_OK;
+}
+
+int qdb_pop(qdb_t *db, const char *queue, qdb_msg_t *out_msg)
+{
+    size_t             qlen;
+    uint8_t            name_len;
+    struct qdb__queue *q;
+    struct qdb__msg   *m;
+
+    if (!db || !queue || !out_msg) { return QDB_ERR_INVAL; }
+    qlen = strlen(queue);
+    if (qlen == 0 || qlen > QDB_QUEUE_NAME_MAX) { return QDB_ERR_INVAL; }
+    name_len = (uint8_t)qlen;
+
+    q = qdb__queue_get(db->state, queue, name_len);
+    if (!q || q->pending_count == 0 || q->pending_head == 0) {
+        return QDB_ERR_EMPTY;
+    }
+    m = qdb__msg_get(db->state, q->pending_head);
+    if (!m) { return QDB_ERR_CORRUPT; }
+
+    return do_pop(db, q, m, out_msg);
+}
+
+/* -------------------------------------------------------------------------
+ * qdb_pop_any
+ * ---------------------------------------------------------------------- */
+
+int qdb_pop_any(qdb_t *db, qdb_msg_t *out_msg)
+{
+    uint32_t           b;
+    struct qdb__queue *best_q  = NULL;
+    struct qdb__msg   *best_m  = NULL;
+    uint64_t           best_id = (uint64_t)-1;  /* UINT64_MAX sentinel */
+
+    if (!db || !out_msg) { return QDB_ERR_INVAL; }
+
+    /*
+     * Scan every queue; pick the one whose pending_head has the lowest
+     * msg_id.  Because msg_id is a global monotonic counter assigned at
+     * push time, the minimum pending_head is the oldest currently-available
+     * message in the database.
+     *
+     * O(Q) where Q is the number of queue entries.  For databases with a
+     * very large number of queues a min-heap indexed by pending_head.msg_id
+     * would reduce this to O(log Q), but O(Q) is appropriate for v1.1.
+     */
+    for (b = 0; b < QDB__QUEUE_BUCKETS; b++) {
+        struct qdb__queue *q = db->state->queue_buckets[b];
+        while (q) {
+            if (q->pending_count > 0 && q->pending_head != 0) {
+                struct qdb__msg *m = qdb__msg_get(db->state, q->pending_head);
+                if (!m) { return QDB_ERR_CORRUPT; }
+                if (m->id < best_id) {
+                    best_id = m->id;
+                    best_q  = q;
+                    best_m  = m;
+                }
+            }
+            q = q->next_in_bucket;
+        }
+    }
+
+    if (!best_q) { return QDB_ERR_EMPTY; }
+
+    return do_pop(db, best_q, best_m, out_msg);
 }
 
 int qdb_ack(qdb_t *db, uint64_t msg_id, uint64_t lease_id)
