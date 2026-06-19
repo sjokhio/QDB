@@ -186,11 +186,13 @@ static void test_locked(void)
 
         qdb_t *db = qdb_open(path);
         char ready = (char)(db ? 1 : 0);
-        (void)write(child_to_parent[1], &ready, 1);
+        ssize_t nw = write(child_to_parent[1], &ready, 1);
+        if (nw != 1) { _exit(2); }
         close(child_to_parent[1]);
 
         char done = 0;
-        (void)read(parent_to_child[0], &done, 1);
+        ssize_t nr = read(parent_to_child[0], &done, 1);
+        if (nr != 1) { _exit(2); }
         close(parent_to_child[0]);
 
         if (db) {
@@ -204,9 +206,10 @@ static void test_locked(void)
     close(parent_to_child[0]);
 
     char ready = 0;
-    (void)read(child_to_parent[0], &ready, 1);
+    ssize_t nr = read(child_to_parent[0], &ready, 1);
     close(child_to_parent[0]);
 
+    ASSERT_EQ(nr, 1);
     ASSERT_EQ((int)ready, 1);
 
     /* Attempt to open the locked database. */
@@ -217,8 +220,10 @@ static void test_locked(void)
 
     /* Signal child to release the lock and exit. */
     char done = 1;
-    (void)write(parent_to_child[1], &done, 1);
+    ssize_t nw = write(parent_to_child[1], &done, 1);
     close(parent_to_child[1]);
+
+    ASSERT_EQ(nw, 1);
 
     int status;
     waitpid(pid, &status, 0);
