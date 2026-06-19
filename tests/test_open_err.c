@@ -11,12 +11,11 @@
  */
 
 #if !defined(_WIN32)
-#  if !defined(_DARWIN_C_SOURCE)
-#    define _DARWIN_C_SOURCE
+#  if !defined(_POSIX_C_SOURCE)
+#    define _POSIX_C_SOURCE 200809L
 #  endif
-#  if !defined(_FILE_OFFSET_BITS)
-#    define _FILE_OFFSET_BITS 64
-#  endif
+#elif !defined(_CRT_SECURE_NO_WARNINGS)
+#  define _CRT_SECURE_NO_WARNINGS
 #endif
 
 #define QDB_TEST_PLATFORM_RAW_IO
