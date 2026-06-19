@@ -244,14 +244,23 @@ GCC 8+, Clang 7+, MSVC 2019+ (requires `/std:c17`).
 ```c
 /* Lifecycle */
 
-qdb_t *db = qdb_open("myapp.qdb");   /* open or create; NULL on failure   */
+/* Simple open — NULL on failure, no error code */
+qdb_t *db = qdb_open("myapp.qdb");
 qdb_close(db);                        /* flush, unlock, free               */
+
+/* Full error reporting (recommended) */
+int rc = QDB_OK;
+qdb_t *db = qdb_open_err("myapp.qdb", NULL, &rc);
+if (!db) {
+    if (rc == QDB_ERR_LOCKED)  { /* another process is running; retry  */ }
+    if (rc == QDB_ERR_CORRUPT) { /* file damaged; restore from backup   */ }
+}
 
 /* Configurable lease timeout (default: 30 s) */
 
 qdb_open_opts_t opts = {0};
 opts.lease_timeout_s = 120;
-qdb_t *db = qdb_open_ex("myapp.qdb", &opts);
+qdb_t *db = qdb_open_err("myapp.qdb", &opts, &rc);   /* opts + error code */
 
 /* Push */
 

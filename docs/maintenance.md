@@ -377,8 +377,21 @@ applications to provide a useful built-in default.
 ### Startup
 
 ```
-☐ Call qdb_open() (or qdb_open_ex() with your lease timeout).
-  On crash recovery, qdb_open() replays the log automatically.
+☐ Call qdb_open_err() to open the database.  It reports the specific
+  failure reason so you can act appropriately:
+
+    int rc = QDB_OK;
+    qdb_t *db = qdb_open_err("work.qdb", NULL, &rc);
+    if (!db) {
+        if (rc == QDB_ERR_LOCKED)  { /* another process is running; retry */ }
+        if (rc == QDB_ERR_CORRUPT) { /* file damaged; restore from backup  */ }
+        /* other codes: QDB_ERR_IO, QDB_ERR_NOMEM */
+        return -1;
+    }
+
+  On crash recovery, qdb_open_err() replays the log automatically.
+  (qdb_open() and qdb_open_ex() are convenience wrappers that call
+   qdb_open_err() with NULL for the parameters they omit.)
 
 ☐ Call qdb_process_expired_leases() before the first qdb_pop().
   After a crash, messages that were LEASED at crash time are restored in

@@ -152,6 +152,59 @@ qdb_t *db = qdb_open_ex("work.qdb", &opts);
 **Returns:** pointer to a `qdb_t` handle on success; `NULL` on
 `QDB_ERR_IO`, `QDB_ERR_CORRUPT`, `QDB_ERR_NOMEM`, or `QDB_ERR_LOCKED`.
 
+When the specific failure reason matters, use `qdb_open_err()`.
+
+---
+
+### `qdb_open_err`
+
+```c
+qdb_t *qdb_open_err(const char *path, const qdb_open_opts_t *opts, int *out_err);
+```
+
+The canonical open function.  `qdb_open()` and `qdb_open_ex()` are thin
+wrappers that pass `NULL` for the parameters they omit.
+
+Use this function when the caller needs to distinguish between failure
+reasons — for example, to retry on `QDB_ERR_LOCKED` or to alert on
+`QDB_ERR_CORRUPT`.
+
+Both `opts` and `out_err` may be `NULL`:
+
+- `NULL` opts → use all defaults (equivalent to `qdb_open()`).
+- `NULL` out_err → discard the error code (equivalent to `qdb_open_ex()`).
+
+**Error codes written to `*out_err`:**
+
+| Code | Meaning |
+|---|---|
+| `QDB_OK` | Success. |
+| `QDB_ERR_INVAL` | `path` is `NULL`. |
+| `QDB_ERR_IO` | Filesystem error (lock file, main file, or flush). |
+| `QDB_ERR_LOCKED` | Another process holds the exclusive file lock. |
+| `QDB_ERR_CORRUPT` | Header, log, or replay detected data corruption. |
+| `QDB_ERR_NOMEM` | A heap allocation failed. |
+
+**Example — distinguish LOCKED from CORRUPT:**
+
+```c
+int rc = QDB_OK;
+qdb_t *db = qdb_open_err("work.qdb", NULL, &rc);
+if (!db) {
+    if (rc == QDB_ERR_LOCKED) {
+        /* Another process is running; retry or exit cleanly. */
+    } else if (rc == QDB_ERR_CORRUPT) {
+        /* File is damaged; restore from backup. */
+    } else {
+        fprintf(stderr, "open failed: %s\n", qdb_errmsg(rc));
+    }
+}
+```
+
+**Returns:** pointer to a `qdb_t` handle on success (and sets `*out_err = QDB_OK`
+if `out_err` is non-NULL); `NULL` on failure (sets `*out_err` to the specific
+error code if `out_err` is non-NULL).
+
 ---
 
 ### `qdb_close`

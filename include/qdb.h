@@ -160,8 +160,10 @@ typedef struct {
  * Recovery: if a previous run crashed without flushing the write-ahead
  * log, qdb_open() performs crash recovery automatically before returning.
  *
- * Equivalent to qdb_open_ex(@path, NULL).  The lease timeout is
+ * Equivalent to qdb_open_err(@path, NULL, NULL).  The lease timeout is
  * QDB_DEFAULT_LEASE_TIMEOUT_S (30 seconds).
+ *
+ * When the specific failure reason matters, use qdb_open_err().
  *
  * @path   Filesystem path to the database file.  Must not be NULL.
  *
@@ -180,6 +182,10 @@ qdb_t *qdb_open(const char *path);
  * Use this function to configure the lease timeout or future open-time
  * options.
  *
+ * Equivalent to qdb_open_err(@path, @opts, NULL).
+ *
+ * When the specific failure reason matters, use qdb_open_err().
+ *
  * @path  Filesystem path to the database file.  Must not be NULL.
  * @opts  Optional configuration.  NULL means "use all defaults."
  *        Must be zero-initialised before any fields are set so that any
@@ -190,6 +196,42 @@ qdb_t *qdb_open(const char *path);
  *          or a filesystem or flush operation fails.
  */
 qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts);
+
+/**
+ * qdb_open_err — open (or create) a queue database with full error reporting.
+ *
+ * The canonical open function.  qdb_open() and qdb_open_ex() are thin
+ * wrappers around this function that pass NULL for the parameters they omit.
+ *
+ * Use this function when the caller needs to distinguish between failure
+ * reasons:
+ *
+ *   QDB_ERR_LOCKED  — another process owns the database; retry later.
+ *   QDB_ERR_CORRUPT — the file is damaged; do not open, restore from backup.
+ *   QDB_ERR_IO      — filesystem error; check errno / system logs.
+ *   QDB_ERR_NOMEM   — heap allocation failed.
+ *   QDB_ERR_INVAL   — @path is NULL.
+ *
+ * Both @opts and @out_err may be NULL.  NULL @opts means "use all defaults"
+ * (equivalent to qdb_open()).  NULL @out_err means "do not report the
+ * error code" (making this function equivalent to qdb_open_ex()).
+ *
+ * On success: returns a non-NULL handle and (if @out_err != NULL) sets
+ *             *@out_err = QDB_OK.
+ * On failure: returns NULL and (if @out_err != NULL) sets *@out_err to the
+ *             specific QDB_ERR_* constant.
+ *
+ * @path     Filesystem path to the database file.  Must not be NULL.
+ * @opts     Optional configuration.  NULL means "use all defaults."
+ *           Must be zero-initialised if non-NULL.
+ * @out_err  Output error code.  May be NULL.  When non-NULL, receives
+ *           QDB_OK on success or a specific QDB_ERR_* code on failure.
+ *
+ * @return  Pointer to a new qdb_t handle on success, or NULL on failure.
+ *
+ * The caller is responsible for calling qdb_close() on the returned handle.
+ */
+qdb_t *qdb_open_err(const char *path, const qdb_open_opts_t *opts, int *out_err);
 
 /**
  * qdb_close — flush and close a queue database.

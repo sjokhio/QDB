@@ -10,6 +10,14 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `qdb_open_err()`: canonical open function that surfaces the specific
+  failure reason through `*out_err`.  `qdb_open()` and `qdb_open_ex()` are
+  now thin wrappers around `qdb_open_err()`.  All 14 failure paths in the
+  open sequence set a distinct `QDB_ERR_*` code (`QDB_ERR_INVAL`,
+  `QDB_ERR_NOMEM`, `QDB_ERR_IO`, `QDB_ERR_LOCKED`, or `QDB_ERR_CORRUPT`)
+  before returning NULL.  Both `opts` and `out_err` may be NULL; the
+  function is safe regardless.  No storage format change.  10 tests added
+  in `tests/test_open_err.c`.  Documented in `docs/api.md`.
 - `qdb_pop_any()`: dequeue the globally oldest available message across all
   queues.  Selects the queue whose `pending_head` has the lowest message ID,
   which is the oldest currently-available message in the database (message IDs

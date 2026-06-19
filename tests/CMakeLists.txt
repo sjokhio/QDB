@@ -264,6 +264,31 @@ add_test(NAME open_ex COMMAND test_open_ex
 )
 
 # ---------------------------------------------------------------------------
+# qdb_open_err() tests
+# ---------------------------------------------------------------------------
+
+add_executable(test_open_err test_open_err.c)
+
+target_include_directories(test_open_err PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_open_err PRIVATE qdb::qdb)
+
+target_compile_options(test_open_err PRIVATE
+    ${QDB_WARNING_FLAGS}
+    ${QDB_SANITIZER_FLAGS}
+)
+
+target_link_options(test_open_err PRIVATE
+    ${QDB_SANITIZER_FLAGS}
+)
+
+add_test(NAME open_err COMMAND test_open_err
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+# ---------------------------------------------------------------------------
 # Multi-process test foundation
 # ---------------------------------------------------------------------------
 

@@ -27,9 +27,21 @@ int main(void)
 
     /* ── Open (or create) the database ──────────────────────────────────── */
 
-    db = qdb_open(path);
+    /*
+     * qdb_open_err() is the canonical open function.  It surfaces the
+     * specific failure reason so the caller can act appropriately.
+     * qdb_open() is a convenience wrapper that calls qdb_open_err() with
+     * NULL for opts and out_err.
+     */
+    db = qdb_open_err(path, NULL, &rc);
     if (!db) {
-        fprintf(stderr, "qdb_open failed\n");
+        if (rc == QDB_ERR_LOCKED) {
+            fprintf(stderr, "database is locked by another process\n");
+        } else if (rc == QDB_ERR_CORRUPT) {
+            fprintf(stderr, "database file is corrupt — restore from backup\n");
+        } else {
+            fprintf(stderr, "qdb_open_err failed: %s\n", qdb_errmsg(rc));
+        }
         return EXIT_FAILURE;
     }
 

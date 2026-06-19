@@ -206,22 +206,26 @@ static int validate_log(qdb_t *db)
 }
 
 /* -------------------------------------------------------------------------
- * qdb_open / qdb_open_ex
+ * qdb_open / qdb_open_ex / qdb_open_err
  * ---------------------------------------------------------------------- */
 
-qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
+qdb_t *qdb_open_err(const char *path, const qdb_open_opts_t *opts, int *out_err)
 {
     qdb_t  *db;
     size_t  path_len;
     int     is_new = 0;
     int     rc;
 
+#define SET_ERR(e)  do { if (out_err) { *out_err = (e); } } while (0)
+
     if (!path) {
+        SET_ERR(QDB_ERR_INVAL);
         return NULL;
     }
 
     db = (qdb_t *)calloc(1, sizeof(*db));
     if (!db) {
+        SET_ERR(QDB_ERR_NOMEM);
         return NULL;
     }
     db->fd      = QDB__INVALID_FD;
@@ -238,17 +242,21 @@ qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
     db->lock_path = make_sidecar(path, path_len, "-lock");
 
     if (!db->path || !db->wal_path || !db->lock_path) {
+        SET_ERR(QDB_ERR_NOMEM);
         qdb__free_db(db);
         return NULL;
     }
 
     /* 1. Acquire exclusive file lock. */
-    if (qdb__lockfile_open(db->lock_path, &db->lock_fd) != QDB_OK) {
+    rc = qdb__lockfile_open(db->lock_path, &db->lock_fd);
+    if (rc != QDB_OK) {
+        SET_ERR(rc);
         qdb__free_db(db);
         return NULL;
     }
     rc = qdb__file_lock(db->lock_fd);
     if (rc != QDB_OK) {
+        SET_ERR(rc);   /* QDB_ERR_LOCKED or QDB_ERR_IO from platform layer */
         qdb__file_close(db->lock_fd);
         db->lock_fd = QDB__INVALID_FD;
         qdb__free_db(db);
@@ -267,7 +275,9 @@ qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
     }
 
     /* 2. Open or create the main file. */
-    if (qdb__file_open(db->path, 1, &db->fd, &is_new) != QDB_OK) {
+    rc = qdb__file_open(db->path, 1, &db->fd, &is_new);
+    if (rc != QDB_OK) {
+        SET_ERR(rc);
         qdb__free_db(db);
         return NULL;
     }
@@ -282,20 +292,25 @@ qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
         db->flags            = QDB_FLAG_DIRTY;
 
         if (qdb__header_write(db->fd, db) != QDB_OK) {
+            SET_ERR(QDB_ERR_IO);
             qdb__free_db(db);
             return NULL;
         }
 
         db->state = qdb__state_alloc();
         if (!db->state) {
+            SET_ERR(QDB_ERR_NOMEM);
             qdb__free_db(db);
             return NULL;
         }
+        SET_ERR(QDB_OK);
         return db;
     }
 
     /* 3. Validate header. */
-    if (qdb__header_read(db->fd, db) != QDB_OK) {
+    rc = qdb__header_read(db->fd, db);
+    if (rc != QDB_OK) {
+        SET_ERR(rc);
         qdb__free_db(db);
         return NULL;
     }
@@ -309,7 +324,9 @@ qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
     /* 4. Replay WAL if present or if dirty flag is set. */
     if ((db->flags & QDB_FLAG_WAL_PRESENT) ||
         (db->flags & QDB_FLAG_DIRTY)) {
-        if (replay_wal(db) != QDB_OK) {
+        rc = replay_wal(db);
+        if (rc != QDB_OK) {
+            SET_ERR(rc);
             qdb__free_db(db);
             return NULL;
         }
@@ -318,12 +335,16 @@ qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
     /* 5. Truncate anything written past log_end_offset (partial last write). */
     {
         uint64_t file_sz = 0;
-        if (qdb__file_size(db->fd, &file_sz) != QDB_OK) {
+        rc = qdb__file_size(db->fd, &file_sz);
+        if (rc != QDB_OK) {
+            SET_ERR(rc);
             qdb__free_db(db);
             return NULL;
         }
         if (file_sz > db->log_end_offset) {
-            if (qdb__file_truncate(db->fd, db->log_end_offset) != QDB_OK) {
+            rc = qdb__file_truncate(db->fd, db->log_end_offset);
+            if (rc != QDB_OK) {
+                SET_ERR(rc);
                 qdb__free_db(db);
                 return NULL;
             }
@@ -331,30 +352,44 @@ qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
     }
 
     /* 6. Scan log: validate all records, truncate uncommitted tail if any. */
-    if (validate_log(db) != QDB_OK) {
+    rc = validate_log(db);
+    if (rc != QDB_OK) {
+        SET_ERR(rc);
         qdb__free_db(db);
         return NULL;
     }
 
     /* 7. Replay log to reconstruct in-memory queue state. */
-    if (qdb__replay_log(db) != QDB_OK) {
+    rc = qdb__replay_log(db);
+    if (rc != QDB_OK) {
+        SET_ERR(rc);
         qdb__free_db(db);
         return NULL;
     }
 
     /* 8. Set dirty flag and persist (including updated next_msg_id). */
     db->flags |= QDB_FLAG_DIRTY;
-    if (qdb__header_update(db->fd, db) != QDB_OK) {
+    rc = qdb__header_update(db->fd, db);
+    if (rc != QDB_OK) {
+        SET_ERR(rc);
         qdb__free_db(db);
         return NULL;
     }
 
+    SET_ERR(QDB_OK);
     return db;
+
+#undef SET_ERR
+}
+
+qdb_t *qdb_open_ex(const char *path, const qdb_open_opts_t *opts)
+{
+    return qdb_open_err(path, opts, NULL);
 }
 
 qdb_t *qdb_open(const char *path)
 {
-    return qdb_open_ex(path, NULL);
+    return qdb_open_err(path, NULL, NULL);
 }
 
 /* -------------------------------------------------------------------------
