@@ -112,10 +112,16 @@ endif()
 
 # ---------------------------------------------------------------------------
 # 3. Compile a minimal consumer using the resolved flags.
+#    Skipped for sanitizer builds: libqdb.a is instrumented with
+#    -fsanitize=address,undefined, so linking without those flags produces
+#    undefined references to __asan_* / __ubsan_* symbols.  qdb.pc must not
+#    encode sanitizer flags (it is a deployment artifact), so the compile
+#    round-trip is only meaningful for normal builds.
 # ---------------------------------------------------------------------------
 
-set(_consumer_src "${TEMP_PREFIX}/pkgconfig_smoke.c")
-file(WRITE "${_consumer_src}"
+if(NOT QDB_SANITIZERS)
+    set(_consumer_src "${TEMP_PREFIX}/pkgconfig_smoke.c")
+    file(WRITE "${_consumer_src}"
 [=[
 #include <qdb.h>
 int main(void)
@@ -125,22 +131,23 @@ int main(void)
 }
 ]=])
 
-separate_arguments(_cflags_list UNIX_COMMAND "${_cflags}")
-separate_arguments(_libs_list   UNIX_COMMAND "${_libs}")
+    separate_arguments(_cflags_list UNIX_COMMAND "${_cflags}")
+    separate_arguments(_libs_list   UNIX_COMMAND "${_libs}")
 
-execute_process(
-    COMMAND "${C_COMPILER}"
-            ${_cflags_list}
-            "${_consumer_src}"
-            ${_libs_list}
-            -o "${TEMP_PREFIX}/pkgconfig_smoke"
-    RESULT_VARIABLE _result
-    OUTPUT_VARIABLE _output
-    ERROR_VARIABLE  _errout
-)
-if(NOT _result EQUAL 0)
-    message(FATAL_ERROR
-        "Compile smoke test failed:\n${_output}\n${_errout}")
+    execute_process(
+        COMMAND "${C_COMPILER}"
+                ${_cflags_list}
+                "${_consumer_src}"
+                ${_libs_list}
+                -o "${TEMP_PREFIX}/pkgconfig_smoke"
+        RESULT_VARIABLE _result
+        OUTPUT_VARIABLE _output
+        ERROR_VARIABLE  _errout
+    )
+    if(NOT _result EQUAL 0)
+        message(FATAL_ERROR
+            "Compile smoke test failed:\n${_output}\n${_errout}")
+    endif()
 endif()
 
 file(REMOVE_RECURSE "${TEMP_PREFIX}")

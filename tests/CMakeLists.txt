@@ -441,6 +441,7 @@ if(NOT WIN32)
                     -DPROJECT_VERSION=${PROJECT_VERSION}
                     -DPKG_CONFIG=${QDB_PKG_CONFIG_EXECUTABLE}
                     -DC_COMPILER=${CMAKE_C_COMPILER}
+                    -DQDB_SANITIZERS=${QDB_SANITIZERS}
                     -P ${CMAKE_CURRENT_SOURCE_DIR}/test_pkgconfig.cmake
         )
         set_tests_properties(pkgconfig_install PROPERTIES TIMEOUT 60)
