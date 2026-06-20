@@ -219,3 +219,15 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/qdbConfigVersion.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/qdb
 )
+
+# pkg-config file — POSIX only; Windows consumers use the CMake package.
+if(NOT WIN32)
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/qdb.pc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/qdb.pc"
+        @ONLY
+    )
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/qdb.pc"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
+    )
+endif()

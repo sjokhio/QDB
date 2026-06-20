@@ -217,6 +217,31 @@ FetchContent_MakeAvailable(qdb)
 target_link_libraries(my_app PRIVATE qdb::qdb)
 ```
 
+### Using with pkg-config (Linux / macOS)
+
+After installing QDB (`cmake --install build --prefix /usr/local`), non-CMake
+build systems can discover the library via `pkg-config`:
+
+```sh
+# Confirm the library is found
+pkg-config --modversion qdb        # → 1.1.0
+
+# Compile and link a consumer
+cc $(pkg-config --cflags qdb) worker.c $(pkg-config --libs qdb) -o worker
+```
+
+For non-system prefixes, set `PKG_CONFIG_PATH` first:
+
+```sh
+export PKG_CONFIG_PATH=/opt/qdb/lib/pkgconfig:$PKG_CONFIG_PATH
+```
+
+> **Note:** Set `CMAKE_INSTALL_PREFIX` at **configure time**
+> (`cmake -B build -DCMAKE_INSTALL_PREFIX=/opt/qdb`) so the path baked into
+> `qdb.pc` matches the actual install location.
+>
+> `qdb.pc` is not installed on Windows — use the CMake package (`find_package(qdb)`) there.
+
 ### Platform support
 
 Compilers and OS versions tested in CI on every push:

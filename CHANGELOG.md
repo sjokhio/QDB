@@ -9,6 +9,17 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- pkg-config support: `qdb.pc` is generated and installed to
+  `${libdir}/pkgconfig/` on Linux and macOS (skipped on Windows, where CMake
+  package discovery is used instead).  Non-CMake consumers — Autotools,
+  Meson, and Python bindings — can now discover include and link flags via
+  `pkg-config --cflags qdb` / `pkg-config --libs qdb`.  The `.pc` file is
+  relocatable: `prefix` is baked in from `CMAKE_INSTALL_PREFIX` at configure
+  time.  A CTest (`pkgconfig_install`) installs to a temp prefix and verifies
+  the version, flags, and a compile round-trip; the test is skipped if
+  `pkg-config` / `pkgconf` is not present on the host.
+
 ---
 
 ## [1.1.0] — 2026-06-19

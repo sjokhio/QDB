@@ -426,3 +426,25 @@ target_link_options(test_compact_recommended PRIVATE
 add_test(NAME compact_recommended COMMAND test_compact_recommended
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
+
+# ---------------------------------------------------------------------------
+# pkg-config install smoke test (non-Windows, requires pkg-config/pkgconf)
+# ---------------------------------------------------------------------------
+
+if(NOT WIN32)
+    find_program(QDB_PKG_CONFIG_EXECUTABLE NAMES pkg-config pkgconf)
+    if(QDB_PKG_CONFIG_EXECUTABLE)
+        add_test(
+            NAME pkgconfig_install
+            COMMAND ${CMAKE_COMMAND}
+                    -DBUILD_DIR=${CMAKE_BINARY_DIR}
+                    -DPROJECT_VERSION=${PROJECT_VERSION}
+                    -DPKG_CONFIG=${QDB_PKG_CONFIG_EXECUTABLE}
+                    -DC_COMPILER=${CMAKE_C_COMPILER}
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/test_pkgconfig.cmake
+        )
+        set_tests_properties(pkgconfig_install PROPERTIES TIMEOUT 60)
+    else()
+        message(STATUS "pkg-config not found — skipping pkgconfig_install test")
+    endif()
+endif()
