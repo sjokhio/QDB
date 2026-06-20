@@ -12,6 +12,7 @@ CTestTestfile.cmake
 _CPack_Packages/
 *.cmake
 !CMakeLists.txt
+!tests/*.cmake
 
 # Compiled object files
 *.o
