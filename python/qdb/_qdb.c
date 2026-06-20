@@ -151,7 +151,7 @@ static PyTypeObject MessageType = {
         "Attributes: id, lease_id, queue (str), data (bytes), retry_count."
     ),
     .tp_getset    = Message_getset,
-    .tp_new       = PyType_GenericNew,
+    .tp_new       = NULL,  /* not directly instantiable; use Database.pop() */
 };
 
 /*
@@ -432,7 +432,9 @@ Database_dealloc(DatabaseObject *self)
 
         qdb_t *h = self->handle;
         self->handle = NULL;
+        Py_BEGIN_ALLOW_THREADS
         qdb_close(h);
+        Py_END_ALLOW_THREADS
     }
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
@@ -500,7 +502,7 @@ static PyTypeObject DatabaseType = {
         "Not thread-safe. Use one handle per thread or protect with a Lock."
     ),
     .tp_methods   = Database_methods,
-    .tp_new       = PyType_GenericNew,
+    .tp_new       = NULL,  /* not directly instantiable; use qdb.open() */
 };
 
 /* =========================================================================
@@ -600,7 +602,7 @@ PyInit__qdb(void)
 
     exc_QDBLockedError = PyErr_NewExceptionWithDoc(
         "qdb.QDBLockedError",
-        "Raised by open() when another process holds the database lock.",
+        "Raised by open() when another opener (same or different process) holds the database lock.",
         exc_QDBError, NULL);
     if (!exc_QDBLockedError)
         goto error;

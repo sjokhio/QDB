@@ -59,3 +59,17 @@ def test_method_after_close_nack(db_path):
     db.close()
     with pytest.raises(ValueError, match="closed"):
         db.nack(msg)
+
+
+# ---------------------------------------------------------------------------
+# Direct instantiation must raise TypeError (not segfault)
+# ---------------------------------------------------------------------------
+
+def test_message_not_directly_instantiable():
+    with pytest.raises(TypeError):
+        qdb.Message()
+
+
+def test_database_not_directly_instantiable():
+    with pytest.raises(TypeError):
+        qdb.Database()

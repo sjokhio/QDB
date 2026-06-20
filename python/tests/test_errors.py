@@ -173,6 +173,27 @@ def test_empty_payload_round_trip(db):
 
 
 # ---------------------------------------------------------------------------
+# QDBNotFoundError — stale ack
+# qdb_ack returns QDB_ERR_NOENT when msg state is already ACKED.
+# ---------------------------------------------------------------------------
+
+def test_double_ack_raises_qdbnotfounderror(db):
+    db.push("q", b"task")
+    msg = db.pop("q")
+    db.ack(msg)
+    with pytest.raises(qdb.QDBNotFoundError):
+        db.ack(msg)
+
+
+def test_qdbnotfounderror_catchable_as_qdberror(db):
+    db.push("q", b"task")
+    msg = db.pop("q")
+    db.ack(msg)
+    with pytest.raises(qdb.QDBError):
+        db.ack(msg)
+
+
+# ---------------------------------------------------------------------------
 # Exception module attributes completeness
 # ---------------------------------------------------------------------------
 
