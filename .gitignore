@@ -71,3 +71,9 @@ vcpkg_installed/
 *.bak
 
 build_san/
+
+# Python binding — auto-generated version header and build artifacts
+python/_gen_include/
+python/*.egg-info/
+python/build/
+python/dist/
