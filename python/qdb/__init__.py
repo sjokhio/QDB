@@ -22,7 +22,10 @@ from qdb._qdb import (   # noqa: F401
     Database,
     Message,
     QDBError,
+    QDBIOError,
+    QDBCorruptError,
     QDBEmptyError,
+    QDBNotFoundError,
     QDBLockedError,
 )
 
@@ -31,6 +34,9 @@ __all__ = [
     "Database",
     "Message",
     "QDBError",
+    "QDBIOError",
+    "QDBCorruptError",
     "QDBEmptyError",
+    "QDBNotFoundError",
     "QDBLockedError",
 ]

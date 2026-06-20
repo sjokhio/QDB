@@ -16,6 +16,7 @@
 #include <Python.h>
 #include "qdb.h"
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 /* =========================================================================
@@ -23,11 +24,16 @@
  * ====================================================================== */
 
 static PyObject *exc_QDBError;
+static PyObject *exc_QDBIOError;
+static PyObject *exc_QDBCorruptError;
 static PyObject *exc_QDBEmptyError;
+static PyObject *exc_QDBNotFoundError;
 static PyObject *exc_QDBLockedError;
 
 /*
  * Set the appropriate Python exception for a QDB_ERR_* return code.
+ * All seven known codes are mapped explicitly. An unexpected negative value
+ * falls through to QDBError with the raw code appended to the message.
  * Must be called with the GIL held.
  */
 static void
@@ -35,10 +41,19 @@ set_qdb_error(int rc)
 {
     PyObject *exc;
     switch (rc) {
-        case QDB_ERR_EMPTY:  exc = exc_QDBEmptyError;  break;
-        case QDB_ERR_LOCKED: exc = exc_QDBLockedError; break;
-        case QDB_ERR_NOMEM:  exc = PyExc_MemoryError;  break;
-        default:             exc = exc_QDBError;        break;
+        case QDB_ERR_IO:     exc = exc_QDBIOError;      break;
+        case QDB_ERR_CORRUPT:exc = exc_QDBCorruptError; break;
+        case QDB_ERR_INVAL:  exc = exc_QDBError;        break;
+        case QDB_ERR_EMPTY:  exc = exc_QDBEmptyError;   break;
+        case QDB_ERR_NOENT:  exc = exc_QDBNotFoundError;break;
+        case QDB_ERR_NOMEM:  exc = PyExc_MemoryError;   break;
+        case QDB_ERR_LOCKED: exc = exc_QDBLockedError;  break;
+        default: {
+            char buf[80];
+            snprintf(buf, sizeof(buf), "%s (code %d)", qdb_errmsg(rc), rc);
+            PyErr_SetString(exc_QDBError, buf);
+            return;
+        }
     }
     PyErr_SetString(exc, qdb_errmsg(rc));
 }
@@ -555,11 +570,32 @@ PyInit__qdb(void)
     if (!exc_QDBError)
         goto error;
 
+    exc_QDBIOError = PyErr_NewExceptionWithDoc(
+        "qdb.QDBIOError",
+        "Raised on filesystem or flush failure (QDB_ERR_IO).",
+        exc_QDBError, NULL);
+    if (!exc_QDBIOError)
+        goto error;
+
+    exc_QDBCorruptError = PyErr_NewExceptionWithDoc(
+        "qdb.QDBCorruptError",
+        "Raised when the database file is corrupt or has an unrecognised format.",
+        exc_QDBError, NULL);
+    if (!exc_QDBCorruptError)
+        goto error;
+
     exc_QDBEmptyError = PyErr_NewExceptionWithDoc(
         "qdb.QDBEmptyError",
         "Raised by pop() when the queue has no available messages.",
         exc_QDBError, NULL);
     if (!exc_QDBEmptyError)
+        goto error;
+
+    exc_QDBNotFoundError = PyErr_NewExceptionWithDoc(
+        "qdb.QDBNotFoundError",
+        "Raised when a queue or message does not exist (QDB_ERR_NOENT).",
+        exc_QDBError, NULL);
+    if (!exc_QDBNotFoundError)
         goto error;
 
     exc_QDBLockedError = PyErr_NewExceptionWithDoc(
@@ -577,9 +613,27 @@ PyInit__qdb(void)
         goto error;
     }
 
+    Py_INCREF(exc_QDBIOError);
+    if (PyModule_AddObject(m, "QDBIOError", exc_QDBIOError) < 0) {
+        Py_DECREF(exc_QDBIOError);
+        goto error;
+    }
+
+    Py_INCREF(exc_QDBCorruptError);
+    if (PyModule_AddObject(m, "QDBCorruptError", exc_QDBCorruptError) < 0) {
+        Py_DECREF(exc_QDBCorruptError);
+        goto error;
+    }
+
     Py_INCREF(exc_QDBEmptyError);
     if (PyModule_AddObject(m, "QDBEmptyError", exc_QDBEmptyError) < 0) {
         Py_DECREF(exc_QDBEmptyError);
+        goto error;
+    }
+
+    Py_INCREF(exc_QDBNotFoundError);
+    if (PyModule_AddObject(m, "QDBNotFoundError", exc_QDBNotFoundError) < 0) {
+        Py_DECREF(exc_QDBNotFoundError);
         goto error;
     }
 
@@ -611,7 +665,10 @@ PyInit__qdb(void)
 
 error:
     Py_XDECREF(exc_QDBError);
+    Py_XDECREF(exc_QDBIOError);
+    Py_XDECREF(exc_QDBCorruptError);
     Py_XDECREF(exc_QDBEmptyError);
+    Py_XDECREF(exc_QDBNotFoundError);
     Py_XDECREF(exc_QDBLockedError);
     Py_DECREF(m);
     return NULL;
