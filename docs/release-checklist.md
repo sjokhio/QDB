@@ -63,7 +63,7 @@ cmake --build build-san --parallel
 ctest --test-dir build-san --output-on-failure
 ```
 
-All 12+ suites must pass in both builds before tagging.
+All 18 suites must pass in both builds before tagging.
 
 ---
 

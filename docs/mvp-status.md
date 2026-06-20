@@ -21,6 +21,7 @@ absent, and the reliability guarantees that already hold.
 |---|---|
 | `qdb_open` / `qdb_close` | Complete |
 | `qdb_open_ex` (configurable lease timeout) | Complete |
+| `qdb_open_err` (open with specific error reporting) | Complete |
 | `qdb_push` | Complete |
 | `qdb_pop` (with lease) | Complete |
 | `qdb_pop_any` (global oldest across all queues) | Complete |
@@ -29,6 +30,7 @@ absent, and the reliability guarantees that already hold.
 | `qdb_process_expired_leases` | Complete |
 | `qdb_compact` | Complete |
 | `qdb_stats` / `qdb_queue_stats` | Complete |
+| `qdb_queue_list` (enumerate all queue names) | Complete |
 | `qdb_compact_recommended` | Complete |
 
 ### Crash recovery
@@ -58,6 +60,14 @@ absent, and the reliability guarantees that already hold.
 - `qdb_stats()` returns database-level counts (pending, leased, acked,
   queue count, file size) without disk I/O.
 - `qdb_queue_stats()` returns per-queue counts.
+- `qdb_queue_list()` enumerates all queue names into a caller-provided
+  buffer without disk I/O or library allocations.
+
+### Command-line tool
+- `qdbtool` is a command-line utility built entirely on the public QDB API.
+  Commands: `info`, `list`, `stats`, `compact`, `verify`.
+  All read commands support `--json` for machine-readable output.
+  Installed alongside the library; controlled by `QDB_BUILD_TOOLS=ON` (default).
 
 ### In-memory state
 - Separate-chaining hash tables for messages (1 024 buckets), queues
@@ -66,9 +76,10 @@ absent, and the reliability guarantees that already hold.
 - Fibonacci hashing for integer keys; FNV-1a for queue name keys.
 
 ### Test coverage
-- 16 test suites.
-- Storage layer, log replay, push, pop, ack, nack, lease expiry, stats,
-  open_ex, multi-process behaviour, and compaction each have a dedicated suite.
+- 18 test suites.
+- Storage layer, log replay, push, pop, pop_any, ack, nack, lease expiry,
+  stats, open_ex, open_err, multi-process behaviour, compaction, boundaries,
+  queue_list, compact_recommended, and qdbtool each have a dedicated suite.
 - I/O failure simulation (close fd mid-operation) verifies that no
   in-memory mutation occurs before the disk write succeeds.
 - Multi-process crash recovery tests cover acked-then-crash and nacked-then-crash

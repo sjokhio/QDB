@@ -2,13 +2,15 @@
 
 ## Supported Versions
 
-QDB is currently pre-1.0.  Security fixes are applied to the `main` branch only.
-
-Once v1.0 is released, this table will be updated with the supported version range.
-
 | Version | Supported |
 |---------|-----------|
-| main    | Yes       |
+| 1.1.x   | Yes       |
+| 1.0.x   | Yes       |
+| < 1.0   | No        |
+
+Security fixes are applied to the two most recent minor releases on the `main`
+branch.  Backport patches to older minor releases are considered on a
+case-by-case basis depending on severity.
 
 ## Reporting a Vulnerability
 

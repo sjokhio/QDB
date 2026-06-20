@@ -9,6 +9,10 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] — 2026-06-19
+
 ### Added
 - `qdb_open_err()`: canonical open function that surfaces the specific
   failure reason through `*out_err`.  `qdb_open()` and `qdb_open_ex()` are
@@ -42,8 +46,8 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Installs to `bin/` alongside the library.
 - `docs/maintenance.md`: operational guide covering compaction scheduling,
   backup/restore, monitoring, retry handling, and a startup/shutdown checklist.
-- 16 test suites total (added `test_queue_list`, `test_compact_recommended`,
-  `test_qdbtool`).
+- 18 test suites total (added `test_queue_list`, `test_compact_recommended`,
+  `test_qdbtool`, `test_pop_any`, `test_open_err`).
 
 ---
 
@@ -141,6 +145,7 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sjokhio/qdb/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/sjokhio/qdb/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/sjokhio/qdb/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/sjokhio/qdb/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/sjokhio/qdb/releases/tag/v0.1.0

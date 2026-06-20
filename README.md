@@ -170,7 +170,7 @@ git clone https://github.com/sjokhio/qdb.git
 cd qdb
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-ctest --test-dir build --output-on-failure   # 16 suites
+ctest --test-dir build --output-on-failure   # 18 suites
 ```
 
 To run with sanitizers (Linux / macOS, Clang or GCC):
@@ -210,7 +210,7 @@ include(FetchContent)
 FetchContent_Declare(
     qdb
     GIT_REPOSITORY https://github.com/sjokhio/qdb.git
-    GIT_TAG        v1.0.0
+    GIT_TAG        v1.1.0
 )
 FetchContent_MakeAvailable(qdb)
 
@@ -381,20 +381,23 @@ and Win32 file APIs, with no `#ifdef` spaghetti in the core logic.
 
 ## Status
 
-QDB v1.0.x is the current stable release. The embedded, durable, single-file 
-core design is complete and stable. Active development is focused on incremental v1.1 improvements. See
+QDB v1.1.0 is the current stable release. See
 [`docs/mvp-status.md`](docs/mvp-status.md) for a detailed feature breakdown
 and [`CHANGELOG.md`](CHANGELOG.md) for change history.
 
 **Implemented and tested:**
 
 - Durable push / pop / ack / nack with at-least-once delivery
-- Configurable lease timeout (`qdb_open_ex`)
+- `qdb_pop_any()`: dequeue the globally oldest message across all queues
+- `qdb_open_err()`: open with full error reporting (LOCKED vs CORRUPT vs IO)
+- Configurable lease timeout (`qdb_open_ex` / `qdb_open_err`)
 - Automatic crash recovery on open (log replay)
 - Exclusive file lock (single-writer enforcement)
 - `qdb_compact()`: crash-safe log compaction via atomic rename
+- `qdb_compact_recommended()`: heuristic to advise when compaction is worthwhile
 - `qdb_stats()` / `qdb_queue_stats()` / `qdb_queue_list()`: in-memory observability and queue enumeration
-- 16 test suites including multi-process and crash recovery scenarios
+- `qdbtool`: command-line utility for inspect, compact, and verify operations
+- 18 test suites including multi-process and crash recovery scenarios
 - Fuzz harnesses for the header, record parser, and full replay path
 - CI on Linux (GCC 12, Clang 15/16/17), macOS 14, and Windows (MSVC, clang-cl)
 - Operational guide: [`docs/maintenance.md`](docs/maintenance.md)
