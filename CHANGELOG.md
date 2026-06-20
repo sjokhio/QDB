@@ -10,6 +10,17 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Experimental Python bindings (`python/` directory): CPython C extension
+  (`qdb-embedded`) wrapping the full push/pop/ack/nack lifecycle.
+  Install with `pip install -e python/` from the repo root (no prior CMake
+  build required — sources compile directly from `src/`).
+  Public API: `qdb.open()`, `Database` context manager, `Message` (read-only
+  attributes), `QDBError` hierarchy (`QDBIOError`, `QDBCorruptError`,
+  `QDBEmptyError`, `QDBNotFoundError`, `QDBLockedError`).
+  `pop()` raises `QDBEmptyError` rather than returning `None`.
+  `ResourceWarning` is emitted if a `Database` is garbage-collected without
+  being closed.  GIL is released around blocking C calls.  60 pytest tests.
+  Requires Python ≥ 3.9.  Linux CI added; macOS/Windows and PyPI deferred.
 - pkg-config support: `qdb.pc` is generated and installed to
   `${libdir}/pkgconfig/` on Linux and macOS (skipped on Windows, where CMake
   package discovery is used instead).  Non-CMake consumers — Autotools,

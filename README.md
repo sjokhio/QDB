@@ -427,6 +427,12 @@ and [`CHANGELOG.md`](CHANGELOG.md) for change history.
 - CI on Linux (GCC 12, Clang 15/16/17), macOS 14, and Windows (MSVC, clang-cl)
 - Operational guide: [`docs/maintenance.md`](docs/maintenance.md)
 
+**Experimental:**
+
+- Python bindings (`python/`) — CPython C extension exposing push/pop/ack/nack
+  with a full exception hierarchy.  Install with `pip install -e python/` from
+  the repo root.  See [`python/README.md`](python/README.md) for usage.
+
 **Intentionally absent (v1.0 non-goals):**
 
 - Multi-process shared access without external coordination
