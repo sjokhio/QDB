@@ -170,7 +170,7 @@ git clone https://github.com/sjokhio/qdb.git
 cd qdb
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
-ctest --test-dir build --output-on-failure   # 18 suites
+ctest --test-dir build --output-on-failure   # 18–19 suites
 ```
 
 To run with sanitizers (Linux / macOS, Clang or GCC):
@@ -210,7 +210,7 @@ include(FetchContent)
 FetchContent_Declare(
     qdb
     GIT_REPOSITORY https://github.com/sjokhio/qdb.git
-    GIT_TAG        v1.1.0
+    GIT_TAG        v1.2.0
 )
 FetchContent_MakeAvailable(qdb)
 
@@ -224,7 +224,7 @@ build systems can discover the library via `pkg-config`:
 
 ```sh
 # Confirm the library is found
-pkg-config --modversion qdb        # → 1.1.0
+pkg-config --modversion qdb        # → 1.2.0
 
 # Compile and link a consumer
 cc $(pkg-config --cflags qdb) worker.c $(pkg-config --libs qdb) -o worker
@@ -406,7 +406,7 @@ and Win32 file APIs, with no `#ifdef` spaghetti in the core logic.
 
 ## Status
 
-QDB v1.1.0 is the current stable release. See
+QDB v1.2.0 is the current stable release. See
 [`docs/mvp-status.md`](docs/mvp-status.md) for a detailed feature breakdown
 and [`CHANGELOG.md`](CHANGELOG.md) for change history.
 

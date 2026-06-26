@@ -9,6 +9,10 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [1.2.0] — 2026-06-25
+
 ### Added
 - Experimental Python bindings (`python/` directory): CPython C extension
   (`qdb-embedded`) wrapping the full push/pop/ack/nack lifecycle.
@@ -19,7 +23,7 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `QDBEmptyError`, `QDBNotFoundError`, `QDBLockedError`).
   `pop()` raises `QDBEmptyError` rather than returning `None`.
   `ResourceWarning` is emitted if a `Database` is garbage-collected without
-  being closed.  GIL is released around blocking C calls.  60 pytest tests.
+  being closed.  GIL is released around blocking C calls.  64 pytest tests.
   Requires Python ≥ 3.9.  Linux CI added; macOS/Windows and PyPI deferred.
 - pkg-config support: `qdb.pc` is generated and installed to
   `${libdir}/pkgconfig/` on Linux and macOS (skipped on Windows, where CMake
@@ -167,7 +171,8 @@ QDB follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sjokhio/qdb/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/sjokhio/qdb/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/sjokhio/qdb/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/sjokhio/qdb/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/sjokhio/qdb/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/sjokhio/qdb/releases/tag/v0.1.0
